@@ -29,7 +29,7 @@ public record YansenSettings(
     }
 
     public ServerSettings serverOrDefault() {
-        return server == null ? new ServerSettings(null, null, null) : server;
+        return server == null ? new ServerSettings(null, null, null, null) : server;
     }
 
     public ModelSettings requireModel(String id) {

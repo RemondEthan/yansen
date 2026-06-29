@@ -19,6 +19,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.io.IOException;
 import java.util.UUID;
 
 /**
@@ -44,9 +45,9 @@ public final class ChatController {
     private static final String SSE_MISSING_PROMPT = "prompt is required";
 
     /**
-     * Inter-event idle threshold that warrants a WARN log. Kept well below Jetty's default
-     * HTTP idle timeout (~30s, see {@code org.eclipse.jetty.server.AbstractConnector}) so
-     * long thinking/CoT pauses that could cut the connection are surfaced while debugging.
+     * Inter-event idle threshold that warrants a WARN log. Kept well below the configured
+     * SSE idle timeout (default 300s) so long thinking/CoT pauses that could cut the
+     * connection are surfaced while debugging.
      */
     private static final long LARGE_EVENT_GAP_MS = 5_000L;
 
@@ -99,7 +100,6 @@ public final class ChatController {
         final String effectiveSessionId = sessionId;
 
         log.info("[SSE] open prompt=\"{}\" userId={} sessionId={}", prompt, userId, effectiveSessionId);
-        sseClient.keepAlive();
 
         final long streamStartMs = System.currentTimeMillis();
         final AtomicLong lastEventMs = new AtomicLong(streamStartMs);
@@ -107,9 +107,17 @@ public final class ChatController {
         // Set by the Flux completion / error paths; if neither is true when the SseClient
         // closes, the connection was cut externally (Jetty idle timeout or client disconnect).
         final AtomicBoolean completedByApp = new AtomicBoolean(false);
-        log.debug("[SSE] stream ready sessionId={} (awaiting events; Jetty default HTTP "
-                + "idle timeout is ~30s, so gaps > that will cut the SSE connection)",
-                effectiveSessionId);
+        // Block the Javalin async context until sseClient.close() is called.
+        // Without this, the async task completes as soon as handleChatStream returns
+        // (which is immediately after subscribe), and Jetty closes the connection
+        // before the Flux has a chance to emit any events.
+        sseClient.keepAlive();
+
+        // Heartbeat keeps the idle timeout from cutting the stream during long
+        // thinking/CoT silences. Scheduled after keepAlive so the async context is
+        // already blocked — no window where Jetty could close the connection.
+        final ScheduledFuture<?> heartbeat = scheduleHeartbeat(sseClient, effectiveSessionId);
+        log.debug("[SSE] stream ready sessionId={} (awaiting events)", effectiveSessionId);
 
         Disposable disposable = agentService.chatStream(prompt, userId, effectiveSessionId)
                 .doOnNext(event -> {
@@ -121,9 +129,7 @@ public final class ChatController {
                             effectiveSessionId, count, event.getType(),
                             event.getClass().getSimpleName(), elapsedMs, gapMs);
                     if (gapMs > LARGE_EVENT_GAP_MS) {
-                        log.warn("[SSE] large event gap sessionId={} gap={}ms "
-                                        + "(Jetty's default HTTP idle timeout is ~30s; "
-                                        + "gaps > this will cut the SSE connection)",
+                        log.warn("[SSE] large event gap sessionId={} gap={}ms",
                                 effectiveSessionId, gapMs);
                     }
                 })
@@ -131,16 +137,21 @@ public final class ChatController {
                         event -> forward(sseClient, event),
                         error -> {
                             completedByApp.set(true);
+                            cancelHeartbeat(heartbeat);
                             terminateWithError(sseClient, effectiveSessionId, error,
                                     eventCount.get(), streamStartMs);
                         },
                         () -> {
                             completedByApp.set(true);
+                            cancelHeartbeat(heartbeat);
                             terminateWithDone(sseClient, effectiveSessionId,
                                     eventCount.get(), streamStartMs);
                         });
 
         sseClient.onClose(() -> {
+            // Catch-all: covers external cuts (Jetty idle timeout / client disconnect) where
+            // neither terminateWith* ran. Idempotent against the cancels above.
+            cancelHeartbeat(heartbeat);
             long elapsedMs = System.currentTimeMillis() - streamStartMs;
             boolean appInitiated = completedByApp.get();
             if (appInitiated) {
@@ -148,8 +159,7 @@ public final class ChatController {
                         effectiveSessionId, eventCount.get(), elapsedMs);
             } else {
                 log.warn("[SSE] connection closed WITHOUT app completion sessionId={} "
-                                + "events={} elapsed={}ms \u2014 no [SSE] close ... reason=... "
-                                + "log was emitted, indicating Jetty idle timeout or client "
+                                + "events={} elapsed={}ms \u2014 idle timeout or client "
                                 + "disconnect cut the stream before the Flux finished",
                         effectiveSessionId, eventCount.get(), elapsedMs);
             }
@@ -157,14 +167,89 @@ public final class ChatController {
         });
     }
 
+    /**
+     * Schedules a recurring SSE comment on the shared executor. The comment is a no-op for
+     * clients (Insomnia, browsers) but counts as bytes on the wire, so Jetty's idle timeout
+     * never fires during long thinking/CoT silences. Returns {@code null} when heartbeats
+     * are disabled, so callers can no-op the cancel.
+     */
+    private ScheduledFuture<?> scheduleHeartbeat(SseClient sseClient, String sessionId) {
+        if (keepAliveIntervalSeconds <= 0L) {
+            log.debug("[SSE] heartbeat disabled sessionId={} (interval=0)", sessionId);
+            return null;
+        }
+        ScheduledFuture<?> future = heartbeatExecutor.scheduleAtFixedRate(
+                () -> runHeartbeat(sseClient, sessionId),
+                keepAliveIntervalSeconds, keepAliveIntervalSeconds, TimeUnit.SECONDS);
+        log.debug("[SSE] heartbeat scheduled sessionId={} interval={}s",
+                sessionId, keepAliveIntervalSeconds);
+        return future;
+    }
+
+    private void runHeartbeat(SseClient sseClient, String sessionId) {
+        try {
+            safeSendComment(sseClient, "keepalive");
+        } catch (RuntimeException e) {
+            // Stream may have been closed between scheduling and firing; safe to ignore.
+            log.debug("[SSE] heartbeat skipped sessionId={} reason={}",
+                    sessionId, e.getMessage());
+        }
+    }
+
+    private void cancelHeartbeat(ScheduledFuture<?> heartbeat) {
+        if (heartbeat != null) {
+            // false = don't interrupt an in-flight write; the next tick simply won't fire.
+            heartbeat.cancel(false);
+        }
+    }
+
+    /**
+     * Synchronizes an {@link SseClient} write. The Javalin SSE output stream is not
+     * thread-safe and is written to from both the Reactor thread (event forwarding /
+     * terminal events) and the shared heartbeat executor. Locking on the client instance
+     * keeps the two writers serial without introducing a separate lock object.
+     *
+     * <p>After each write we call {@code ctx().res().flushBuffer()}: Javalin's
+     * {@link io.javalin.http.sse.Emitter} writes via {@code response.getOutputStream().print},
+     * which never flushes, and Jetty's {@code HttpOutput} buffers small writes in an
+     * aggregate (default 32KB) that only ships when full or on close. For SSE that means
+     * bytes can sit in Jetty for tens of seconds while the TCP socket sees nothing —
+     * Jetty's idle timeout then cuts the connection from the server side. Flushing each
+     * event/comment pushes the current chunk onto the wire so the idle timeout resets and
+     * the client sees tokens in real time.
+     */
+    private void safeSendEvent(SseClient sseClient, String name, String data) {
+        synchronized (sseClient) {
+            sseClient.sendEvent(name, data);
+            flushResponse(sseClient);
+        }
+    }
+
+    private void safeSendComment(SseClient sseClient, String text) {
+        synchronized (sseClient) {
+            sseClient.sendComment(text);
+            flushResponse(sseClient);
+        }
+    }
+
+    private void flushResponse(SseClient sseClient) {
+        try {
+            sseClient.ctx().res().flushBuffer();
+        } catch (IOException e) {
+            // Most likely the client disconnected; the next send* call will surface it
+            // to the onClose path. Don't let a transient flush failure tear down the stream.
+            log.debug("[SSE] flush failed: {}", e.getMessage());
+        }
+    }
+
     private void forward(SseClient sseClient, AgentEvent event) {
-        sseMapper.map(event).ifPresent(sse -> sseClient.sendEvent(sse.name(), sse.data()));
+        sseMapper.map(event).ifPresent(sse -> safeSendEvent(sseClient, sse.name(), sse.data()));
     }
 
     private void terminateWithDone(SseClient sseClient, String sessionId,
                                    long eventCount, long streamStartMs) {
         SseEvent done = sseMapper.doneEvent();
-        sseClient.sendEvent(done.name(), done.data());
+        safeSendEvent(sseClient, done.name(), done.data());
         sseClient.close();
         log.info("[SSE] close sessionId={} reason=complete events={} elapsed={}ms",
                 sessionId, eventCount, System.currentTimeMillis() - streamStartMs);
@@ -175,7 +260,7 @@ public final class ChatController {
         log.error("[SSE] close sessionId={} reason=error events={} elapsed={}ms",
                 sessionId, eventCount, System.currentTimeMillis() - streamStartMs, error);
         SseEvent err = sseMapper.errorEvent(error);
-        sseClient.sendEvent(err.name(), err.data());
+        safeSendEvent(sseClient, err.name(), err.data());
         sseClient.close();
     }
 }

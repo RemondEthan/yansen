@@ -2,7 +2,7 @@ package com.glodon.mordor.yansen.api;
 
 import com.glodon.mordor.yansen.config.ServerSettings;
 import com.glodon.mordor.yansen.service.YansenAgentService;
-import io.javalin.config.JavalinConfig;
+import io.javalin.config.RoutesConfig;
 
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -24,18 +24,26 @@ public final class ApiModule {
      */
     private static final String HEARTBEAT_THREAD_NAME = "sse-heartbeat";
 
-    private ApiModule() {
+    private final ScheduledExecutorService heartbeatExecutor;
+
+    private ApiModule(ScheduledExecutorService heartbeatExecutor) {
+        this.heartbeatExecutor = heartbeatExecutor;
     }
 
-    public static void configure(JavalinConfig config, YansenAgentService agentService,
-                                 ServerSettings serverSettings) {
-        SseEventMapper sseMapper = new SseEventMapper();
+    public static ApiModule configure(RoutesConfig routes, YansenAgentService agentService,
+                                      ServerSettings serverSettings) {
         ScheduledExecutorService heartbeatExecutor =
                 Executors.newSingleThreadScheduledExecutor(daemonThreadFactory(HEARTBEAT_THREAD_NAME));
-        new HealthController().register(config.routes);
+        SseEventMapper sseMapper = new SseEventMapper();
+        new HealthController().register(routes);
         new ChatController(agentService, sseMapper, heartbeatExecutor,
-                serverSettings.keepAliveIntervalSecondsOrDefault()).register(config.routes);
-        GlobalExceptionMapper.register(config.routes);
+                serverSettings.keepAliveIntervalSecondsOrDefault()).register(routes);
+        GlobalExceptionMapper.register(routes);
+        return new ApiModule(heartbeatExecutor);
+    }
+
+    public void shutdown() {
+        heartbeatExecutor.shutdownNow();
     }
 
     private static ThreadFactory daemonThreadFactory(String name) {
