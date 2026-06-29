@@ -20,11 +20,13 @@ public final class GlobalExceptionMapper {
 
     private static final String CODE_INTERNAL = "internal_error";
     private static final String CODE_BAD_REQUEST = "bad_request";
+    private static final String CODE_UPSTREAM_TIMEOUT = "upstream_timeout";
 
     private GlobalExceptionMapper() {
     }
 
     public static void register(RoutesConfig routes) {
+        routes.exception(UpstreamTimeoutException.class, GlobalExceptionMapper::handleUpstreamTimeout);
         routes.exception(IllegalArgumentException.class, GlobalExceptionMapper::handleBadRequest);
         routes.exception(Exception.class, GlobalExceptionMapper::handleInternal);
     }
@@ -37,6 +39,11 @@ public final class GlobalExceptionMapper {
     private static void handleBadRequest(IllegalArgumentException e, Context ctx) {
         log.warn("Bad request on {} {}: {}", ctx.method(), ctx.path(), e.getMessage());
         ctx.status(400).json(new ErrorResponse(CODE_BAD_REQUEST, safeMessage(e)));
+    }
+
+    private static void handleUpstreamTimeout(UpstreamTimeoutException e, Context ctx) {
+        log.error("Upstream timeout on {} {}: {}", ctx.method(), ctx.path(), e.getMessage());
+        ctx.status(504).json(new ErrorResponse(CODE_UPSTREAM_TIMEOUT, safeMessage(e)));
     }
 
     private static String safeMessage(Throwable t) {

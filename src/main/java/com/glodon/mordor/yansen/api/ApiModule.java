@@ -35,9 +35,10 @@ public final class ApiModule {
         ScheduledExecutorService heartbeatExecutor =
                 Executors.newSingleThreadScheduledExecutor(daemonThreadFactory(HEARTBEAT_THREAD_NAME));
         SseEventMapper sseMapper = new SseEventMapper();
-        new HealthController().register(routes);
+        new HealthController().registerOn(routes);
         new ChatController(agentService, sseMapper, heartbeatExecutor,
-                serverSettings.keepAliveIntervalSecondsOrDefault()).register(routes);
+                serverSettings.keepAliveIntervalSecondsOrDefault(),
+                serverSettings.sseEventTimeoutSecondsOrDefault()).registerOn(routes);
         GlobalExceptionMapper.register(routes);
         return new ApiModule(heartbeatExecutor);
     }

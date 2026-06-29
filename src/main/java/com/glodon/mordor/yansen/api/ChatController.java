@@ -19,7 +19,6 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
-import java.io.IOException;
 import java.util.UUID;
 
 /**
@@ -29,7 +28,7 @@ import java.util.UUID;
  * streaming {@code GET /api/chat/stream} (SSE). All SSE event translation goes through
  * {@link SseEventMapper}; this class is concerned with HTTP/SSE wiring only.
  */
-public final class ChatController {
+public final class ChatController implements Controller {
 
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
@@ -55,16 +54,20 @@ public final class ChatController {
     private final SseEventMapper sseMapper;
     private final ScheduledExecutorService heartbeatExecutor;
     private final long keepAliveIntervalSeconds;
+    private final long sseEventTimeoutSeconds;
 
     public ChatController(YansenAgentService agentService, SseEventMapper sseMapper,
-                          ScheduledExecutorService heartbeatExecutor, long keepAliveIntervalSeconds) {
+                          ScheduledExecutorService heartbeatExecutor,
+                          long keepAliveIntervalSeconds, long sseEventTimeoutSeconds) {
         this.agentService = agentService;
         this.sseMapper = sseMapper;
         this.heartbeatExecutor = heartbeatExecutor;
         this.keepAliveIntervalSeconds = keepAliveIntervalSeconds;
+        this.sseEventTimeoutSeconds = sseEventTimeoutSeconds;
     }
 
-    public void register(RoutesConfig routes) {
+    @Override
+    public void registerOn(RoutesConfig routes) {
         routes.apiBuilder((EndpointGroup) () -> {
             ApiBuilder.post(ROUTE_CHAT, this::handleChat);
             ApiBuilder.sse(ROUTE_CHAT_STREAM, this::handleChatStream);
@@ -120,6 +123,7 @@ public final class ChatController {
         log.debug("[SSE] stream ready sessionId={} (awaiting events)", effectiveSessionId);
 
         Disposable disposable = agentService.chatStream(prompt, userId, effectiveSessionId)
+                .timeout(java.time.Duration.ofSeconds(sseEventTimeoutSeconds))
                 .doOnNext(event -> {
                     long nowMs = System.currentTimeMillis();
                     long gapMs = nowMs - lastEventMs.getAndSet(nowMs);
@@ -209,36 +213,35 @@ public final class ChatController {
      * terminal events) and the shared heartbeat executor. Locking on the client instance
      * keeps the two writers serial without introducing a separate lock object.
      *
-     * <p>After each write we call {@code ctx().res().flushBuffer()}: Javalin's
-     * {@link io.javalin.http.sse.Emitter} writes via {@code response.getOutputStream().print},
-     * which never flushes, and Jetty's {@code HttpOutput} buffers small writes in an
-     * aggregate (default 32KB) that only ships when full or on close. For SSE that means
-     * bytes can sit in Jetty for tens of seconds while the TCP socket sees nothing —
-     * Jetty's idle timeout then cuts the connection from the server side. Flushing each
-     * event/comment pushes the current chunk onto the wire so the idle timeout resets and
-     * the client sees tokens in real time.
+     * <p>Javalin's {@link io.javalin.http.sse.Emitter} calls
+     * {@code response.flushBuffer()} at the end of each {@code emit()}, so every
+     * event and comment is pushed onto the wire immediately. This resets Jetty's
+     * idle timeout and ensures clients see tokens in real time — no explicit flush
+     * is needed on our side.
+     *
+     * <p>Both methods catch {@code RuntimeException} defensively: the current
+     * Javalin implementation does not throw from {@code sendEvent}/{@code sendComment},
+     * but a future version might. Catching here prevents an exception from propagating
+     * to the Reactor {@code onError} callback, which would call {@code terminateWithError}
+     * and attempt another write — potentially causing a cascade.
      */
     private void safeSendEvent(SseClient sseClient, String name, String data) {
         synchronized (sseClient) {
-            sseClient.sendEvent(name, data);
-            flushResponse(sseClient);
+            try {
+                sseClient.sendEvent(name, data);
+            } catch (RuntimeException e) {
+                log.debug("[SSE] sendEvent failed: {}", e.getMessage());
+            }
         }
     }
 
     private void safeSendComment(SseClient sseClient, String text) {
         synchronized (sseClient) {
-            sseClient.sendComment(text);
-            flushResponse(sseClient);
-        }
-    }
-
-    private void flushResponse(SseClient sseClient) {
-        try {
-            sseClient.ctx().res().flushBuffer();
-        } catch (IOException e) {
-            // Most likely the client disconnected; the next send* call will surface it
-            // to the onClose path. Don't let a transient flush failure tear down the stream.
-            log.debug("[SSE] flush failed: {}", e.getMessage());
+            try {
+                sseClient.sendComment(text);
+            } catch (RuntimeException e) {
+                log.debug("[SSE] sendComment failed: {}", e.getMessage());
+            }
         }
     }
 

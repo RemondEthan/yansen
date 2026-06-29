@@ -36,7 +36,7 @@ public final class OpenAiCompatibleProvider implements ModelProvider {
         requireNonBlank(settings.apiKey(), settings.provider(), "apiKey");
         requireNonBlank(settings.baseUrl(), settings.provider(), "baseUrl");
 
-        var builder = OpenAIChatModel.builder()
+        OpenAIChatModel.Builder builder = OpenAIChatModel.builder()
                 .modelName(settings.modelName())
                 .apiKey(settings.apiKey())
                 .baseUrl(settings.baseUrl())

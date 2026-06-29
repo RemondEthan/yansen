@@ -52,8 +52,9 @@ public class YansenAgentService {
     private static final Pattern THINK_TAG = Pattern.compile("<think>.*?</think>", Pattern.DOTALL);
 
     private final HarnessAgent agent;
+    private final long chatTimeoutSeconds;
 
-    public YansenAgentService(AgentContext context) {
+    public YansenAgentService(AgentContext context, long chatTimeoutSeconds) {
         YansenSettings settings = context.settings();
         AgentSettings agentSettings = settings.defaultAgent();
         ModelSettings modelSettings = settings.requireModel(agentSettings.model());
@@ -96,11 +97,15 @@ public class YansenAgentService {
         }
 
         this.agent = builder.build();
+        this.chatTimeoutSeconds = chatTimeoutSeconds;
     }
 
     public String chat(String prompt, String userId, String sessionId) {
         RuntimeContext ctx = buildRuntimeContext(userId, sessionId);
-        Msg result = agent.call(new UserMessage(prompt), ctx).block();
+        Msg result = agent.call(new UserMessage(prompt), ctx)
+                .blockOptional(java.time.Duration.ofSeconds(chatTimeoutSeconds))
+                .orElseThrow(() -> new com.glodon.mordor.yansen.api.UpstreamTimeoutException(
+                        "LLM response timed out after " + chatTimeoutSeconds + "s"));
         logThinking(result, sessionId);
         return extractTextContent(result);
     }

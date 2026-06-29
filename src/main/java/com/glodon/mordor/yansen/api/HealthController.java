@@ -11,11 +11,12 @@ import io.javalin.config.RoutesConfig;
  * constant payload; intentionally does not touch the agent service so it stays cheap and
  * never blocks.
  */
-public final class HealthController {
+public final class HealthController implements Controller {
 
     private static final String ROUTE = "/api/health";
 
-    public void register(RoutesConfig routes) {
+    @Override
+    public void registerOn(RoutesConfig routes) {
         routes.apiBuilder((EndpointGroup) () -> ApiBuilder.get(ROUTE, ctx -> ctx.json(new HealthBody("ok"))));
     }
 

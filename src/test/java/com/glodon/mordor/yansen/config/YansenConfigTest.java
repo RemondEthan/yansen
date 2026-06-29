@@ -111,7 +111,7 @@ class YansenConfigTest {
     @Test
     void mergedWithAddsMissingKeys() {
         YansenSettings base = new YansenSettings(
-                new ServerSettings(8080, 10_000L, 15L, null),
+                new ServerSettings(8080, 10_000L, 15L, null, null, null),
                 Map.of("default", new ModelSettings("openai-compatible", "MiniMax-M3", "u", "k",
                         null, null, null, null, null)),
                 Map.of("default", new AgentSettings("default", null, null, null, null, null, null)),
@@ -134,16 +134,16 @@ class YansenConfigTest {
     @Test
     void mergedWithNullReturnsSelf() {
         YansenSettings base = new YansenSettings(
-                new ServerSettings(8080, 10_000L, 15L, null), Map.of(), Map.of(), null, null);
+                new ServerSettings(8080, 10_000L, 15L, null, null, null), Map.of(), Map.of(), null, null);
         assertEquals(base, base.mergedWith(null));
     }
 
     @Test
     void mergedWithOverridesServer() {
         YansenSettings base = new YansenSettings(
-                new ServerSettings(8080, 10_000L, 15L, null), Map.of(), Map.of(), null, null);
+                new ServerSettings(8080, 10_000L, 15L, null, null, null), Map.of(), Map.of(), null, null);
         YansenSettings override = new YansenSettings(
-                new ServerSettings(9090, 50_000L, 15L, null), Map.of(), Map.of(), null, null);
+                new ServerSettings(9090, 50_000L, 15L, null, null, null), Map.of(), Map.of(), null, null);
 
         YansenSettings merged = base.mergedWith(override);
 

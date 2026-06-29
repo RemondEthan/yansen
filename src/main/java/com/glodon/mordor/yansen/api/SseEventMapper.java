@@ -37,16 +37,11 @@ public final class SseEventMapper {
      * surface cares about (e.g. tool-call lifecycle, message boundaries).
      */
     public Optional<SseEvent> map(AgentEvent event) {
-        if (event == null) {
-            return Optional.empty();
-        }
-        if (event instanceof TextBlockDeltaEvent e) {
-            return Optional.of(new SseEvent(EVENT_TOKEN, e.getDelta()));
-        }
-        if (event instanceof ThinkingBlockDeltaEvent e) {
-            return Optional.of(new SseEvent(EVENT_THINKING, e.getDelta()));
-        }
-        return Optional.empty();
+        return switch (event) {
+            case TextBlockDeltaEvent e -> Optional.of(new SseEvent(EVENT_TOKEN, e.getDelta()));
+            case ThinkingBlockDeltaEvent e -> Optional.of(new SseEvent(EVENT_THINKING, e.getDelta()));
+            case null, default -> Optional.empty();
+        };
     }
 
     /** Terminal event emitted on stream completion. */

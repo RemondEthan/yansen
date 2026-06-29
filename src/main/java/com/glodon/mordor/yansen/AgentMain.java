@@ -31,9 +31,9 @@ public class AgentMain {
     public static void main(String[] args) {
         applyLogLevelFromEnv();
         AgentContext context = AgentContext.bootstrap();
-        YansenAgentService agentService = new YansenAgentService(context);
         ServerSettings serverSettings = context.settings().serverOrDefault();
-
+        YansenAgentService agentService = new YansenAgentService(context,
+                serverSettings.chatTimeoutSecondsOrDefault());
         Javalin app = Javalin.create(c -> {
             c.http.maxRequestSize = serverSettings.maxRequestSizeBytesOrDefault();
             configureJettyForSse(c, serverSettings);

@@ -88,8 +88,7 @@ public final class ToolRegistry {
         Objects.requireNonNull(providers, "providers");
         Map<String, ToolProvider> map = new LinkedHashMap<>();
         try {
-            for (Iterator<ToolProvider> it = providers.iterator(); it.hasNext(); ) {
-                ToolProvider p = it.next();
+            for (ToolProvider p : providers) {
                 Objects.requireNonNull(p, "ToolProvider from SPI");
                 String id = p.toolId();
                 if (id == null || id.isBlank()) {
