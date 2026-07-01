@@ -1,10 +1,14 @@
 package com.glodon.mordor.yansen.mcp;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.glodon.mordor.yansen.config.store.McpConfigRecord;
 import io.agentscope.harness.agent.tools.McpServerConfig;
 
 import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -55,5 +59,31 @@ public final class McpRegistry {
 
     public static McpRegistry fromSettings(Map<String, McpServerConfig> servers) {
         return new McpRegistry(servers == null ? Map.of() : servers);
+    }
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    public static McpRegistry fromMcpRecords(List<McpConfigRecord> records) {
+        if (records == null || records.isEmpty()) {
+            return new McpRegistry(Map.of());
+        }
+        Map<String, McpServerConfig> map = new LinkedHashMap<>();
+        for (McpConfigRecord record : records) {
+            map.put(record.mcpId(), deserializeConfig(record));
+        }
+        return new McpRegistry(map);
+    }
+
+    private static McpServerConfig deserializeConfig(McpConfigRecord record) {
+        String json = record.config();
+        if (json == null || json.isBlank()) {
+            return new McpServerConfig();
+        }
+        try {
+            return JSON.readValue(json, McpServerConfig.class);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException(
+                    "Failed to parse MCP config JSON for '" + record.mcpId() + "'", e);
+        }
     }
 }

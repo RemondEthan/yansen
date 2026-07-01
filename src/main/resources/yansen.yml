@@ -1,45 +1,19 @@
 server:
   port: "${YANSEN_PORT:8080}"
   maxRequestSizeBytes: 10000
-  # SSE heartbeat interval (seconds). Sends a no-op SSE comment to the client at this rate
-  # so Jetty's ~30s HTTP idle timeout cannot cut long thinking/CoT pauses. Set 0 to disable.
-  keepAliveIntervalSeconds: "${YANSEN_KEEPALIVE_INTERVAL:15}"
+  keepAliveIntervalSeconds: "${YANSEN_KEEPALIVE_INTERVAL:10}"
+  sseIdleTimeoutSeconds: "${YANSEN_SSE_IDLE_TIMEOUT:300}"
+  sseEventTimeoutSeconds: "${YANSEN_SSE_EVENT_TIMEOUT:120}"
+  chatTimeoutSeconds: "${YANSEN_CHAT_TIMEOUT:300}"
+  # NOTE: When deployed behind a reverse proxy, ensure the proxy read-idle timeout
+  # exceeds keepAliveIntervalSeconds so SSE heartbeats keep the stream alive.
 
-# Each model is identified by its key (referenced from agents[*].model).
-# provider is one of: openai-compatible | minimax | ... (more added in PR2).
-models:
-  default:
-    provider: openai-compatible
-    modelName: MiniMax-M3
-    baseUrl: https://api.minimaxi.com/v1
-    apiKey: "${MINIMAX_API_KEY:}"
-    # timeoutSeconds is deprecated — it maps to ExecutionConfig.timeout (Flux.timeout),
-    # which measures event interval, not total time. For SSE streams this causes false
-    # timeouts during model thinking. Use readTimeoutSeconds instead.
-    # timeoutSeconds: "${YANSEN_MODEL_TIMEOUT:900}"
-    # Max retry attempts on retryable errors (timeout, rate-limit, IO).
-    # Framework default is 3; set to 1 to disable retries.
-    maxRetries: "${YANSEN_MODEL_MAX_RETRIES:3}"
-    # HTTP transport timeouts — only override when the defaults are insufficient.
-    # Framework defaults: connect=30s, read=5min, write=30s
-    connectTimeoutSeconds: "${YANSEN_CONNECT_TIMEOUT:30}"
-    readTimeoutSeconds: "${YANSEN_READ_TIMEOUT:900}"
-    writeTimeoutSeconds: "${YANSEN_WRITE_TIMEOUT:30}"
-
-# Where to discover AgentSkill SKILL.md files. Either source can be omitted.
-skills:
-  workspaceDir: skills
-  classpathBase: skills
-
-# MCP server definitions; referenced by agents[*].mcp[].
-mcp: {}
-
-# Each agent binds a model id plus runtime concerns (workspace, system prompt, tools/skills/mcp).
-agents:
-  default:
-    model: default
-    workspace: "${YANSEN_WORKSPACE:}"
-    systemPromptPath: "${YANSEN_SYSTEM_PROMPT:}"
-    tools: []
-    skills: []
-    mcp: []
+database:
+  type: "${YANSEN_DB_TYPE:sqlite}"
+  sqlite:
+    path: "${YANSEN_SQLITE_PATH:store/yansen.db}"
+  mysql:
+    jdbcUrl: "${YANSEN_MYSQL_JDBC_URL:jdbc:mysql://localhost:3306/yansen?useSSL=false&serverTimezone=UTC}"
+    username: "${YANSEN_MYSQL_USER:yansen}"
+    password: "${YANSEN_MYSQL_PASSWORD:}"
+    maximumPoolSize: "${YANSEN_MYSQL_POOL_SIZE:10}"

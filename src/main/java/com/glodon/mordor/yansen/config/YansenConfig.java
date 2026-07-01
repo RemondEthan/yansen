@@ -40,7 +40,7 @@ public final class YansenConfig {
     static YansenSettings loadFromClasspath() {
         try (InputStream is = YansenConfig.class.getResourceAsStream(CONFIG_FILE_CLASSPATH)) {
             if (is == null) {
-                return new YansenSettings(null, null, null, null, null);
+                return new YansenSettings(null, null);
             }
             return parse(is);
         } catch (IOException e) {

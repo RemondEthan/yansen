@@ -1,15 +1,21 @@
 server:
   port: "${YANSEN_PORT:8080}"
   maxRequestSizeBytes: 10000
+  keepAliveIntervalSeconds: "${YANSEN_KEEPALIVE_INTERVAL:10}"
+  sseIdleTimeoutSeconds: "${YANSEN_SSE_IDLE_TIMEOUT:300}"
+  sseEventTimeoutSeconds: "${YANSEN_SSE_EVENT_TIMEOUT:120}"
+  chatTimeoutSeconds: "${YANSEN_CHAT_TIMEOUT:300}"
 
 # Each model is identified by its key (referenced from agents[*].model).
 # provider is one of: openai-compatible | minimax | ... (more added in PR2).
 models:
   default:
     provider: openai-compatible
-    modelName: MiniMax-M3
-    baseUrl: https://api.minimaxi.com/v1
-    apiKey: "${MINIMAX_API_KEY:}"
+#    modelName: MiniMax-M3
+    modelName: glm-5.1
+#    baseUrl: https://api.minimaxi.com/v1
+    baseUrl: https://token-proxy.glodon.com/v1
+    apiKey: "${API_KEY:}"
     # Max retry attempts on retryable errors (timeout, rate-limit, IO).
     # Framework default is 3; set to 1 to disable retries.
     maxRetries: "${YANSEN_MODEL_MAX_RETRIES:3}"

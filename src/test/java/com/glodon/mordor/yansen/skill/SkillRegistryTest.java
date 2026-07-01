@@ -1,6 +1,6 @@
 package com.glodon.mordor.yansen.skill;
 
-import com.glodon.mordor.yansen.config.SkillsConfig;
+import com.glodon.mordor.yansen.config.store.SkillConfigRecord;
 import io.agentscope.core.skill.repository.AgentSkillRepository;
 import io.agentscope.core.skill.repository.ClasspathSkillRepository;
 import io.agentscope.core.skill.repository.FileSystemSkillRepository;
@@ -26,67 +26,67 @@ class SkillRegistryTest {
 
     @Test
     void fromClasspathConfigWithClasspathBaseRegistersRepo() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         assertTrue(registry.has(CLASSPATH_KEY));
         assertEquals(Set.of(CLASSPATH_KEY), registry.registeredSkillSources());
     }
 
     @Test
     void fromClasspathConfigWithNullConfigReturnsEmpty() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(null);
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         assertEquals(0, registry.registeredSkillSources().size());
     }
 
     @Test
     void fromClasspathConfigWithoutClasspathBaseReturnsEmpty() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig("ignored", null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         assertEquals(0, registry.registeredSkillSources().size());
     }
 
     @Test
     void fromClasspathConfigWithBlankClasspathBaseReturnsEmpty() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig("ignored", "   "));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("   ");
         assertEquals(0, registry.registeredSkillSources().size());
     }
 
     @Test
     void fromClasspathConfigIgnoresWorkspaceDir() {
         // The registry must NOT bake workspaceDir into itself; the workspace is per-agent.
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig("/some/workspace", "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         assertEquals(Set.of(CLASSPATH_KEY), registry.registeredSkillSources());
     }
 
     @Test
     void hasReturnsFalseForUnknown() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         assertFalse(registry.has("classpath:nope"));
         assertFalse(registry.has("workspace:foo"));
     }
 
     @Test
     void registeredSkillSourcesIsImmutable() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         Set<String> sources = registry.registeredSkillSources();
         assertThrows(UnsupportedOperationException.class, () -> sources.add("rogue"));
     }
 
     @Test
     void resolveEmptyReturnsEmpty() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         List<AgentSkillRepository> out = registry.resolve(List.of(), "/tmp/anywhere");
         assertEquals(0, out.size());
     }
 
     @Test
     void resolveNullReturnsEmpty() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         List<AgentSkillRepository> out = registry.resolve(null, "/tmp/anywhere");
         assertEquals(0, out.size());
     }
 
     @Test
     void resolveClasspathIdReturnsRegisteredInstance() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         List<AgentSkillRepository> out = registry.resolve(List.of(CLASSPATH_KEY), "/tmp/anywhere");
         assertEquals(1, out.size());
         assertNotNull(out.get(0));
@@ -95,7 +95,7 @@ class SkillRegistryTest {
 
     @Test
     void resolveClasspathIdIsIdentityForPreRegisteredRepo() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         AgentSkillRepository preRegistered = registry.resolve(List.of(CLASSPATH_KEY), "/tmp").get(0);
         AgentSkillRepository again = registry.resolve(List.of(CLASSPATH_KEY), "/tmp").get(0);
         assertSame(preRegistered, again);
@@ -103,7 +103,7 @@ class SkillRegistryTest {
 
     @Test
     void resolveClasspathIdThrowsForUnknownId() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> registry.resolve(List.of("classpath:nope"), "/tmp"));
         assertTrue(e.getMessage().contains("classpath:nope"));
@@ -112,7 +112,7 @@ class SkillRegistryTest {
     @Test
     void resolveWorkspaceIdBuildsRepoOnDemand(@TempDir Path tempDir) throws Exception {
         Path subDir = Files.createDirectory(tempDir.resolve("skills"));
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         List<AgentSkillRepository> out = registry.resolve(List.of("workspace:skills"), tempDir.toString());
         assertEquals(1, out.size());
         assertTrue(out.get(0) instanceof FileSystemSkillRepository);
@@ -122,14 +122,14 @@ class SkillRegistryTest {
     void resolveWorkspaceIdDoesNotRegisterInTheRegistry(@TempDir Path tempDir) throws Exception {
         // resolve() of a workspace id must not leak entries into registeredSkillSources.
         Files.createDirectory(tempDir.resolve("skills"));
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         registry.resolve(List.of("workspace:skills"), tempDir.toString());
         assertEquals(0, registry.registeredSkillSources().size());
     }
 
     @Test
     void resolveWorkspaceIdThrowsWhenWorkspacePathIsNull() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> registry.resolve(List.of("workspace:skills"), null));
         assertTrue(e.getMessage().contains("workspace:skills"));
@@ -137,14 +137,14 @@ class SkillRegistryTest {
 
     @Test
     void resolveWorkspaceIdThrowsWhenWorkspacePathIsBlank() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         assertThrows(IllegalStateException.class,
                 () -> registry.resolve(List.of("workspace:skills"), "  "));
     }
 
     @Test
     void resolveUnknownSchemeThrows() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         IllegalStateException e = assertThrows(IllegalStateException.class,
                 () -> registry.resolve(List.of("git:foo"), "/tmp"));
         assertTrue(e.getMessage().contains("git:foo"));
@@ -152,14 +152,14 @@ class SkillRegistryTest {
 
     @Test
     void resolveBlankIdThrows() {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, null));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase(null);
         assertThrows(IllegalStateException.class, () -> registry.resolve(List.of(""), "/tmp"));
     }
 
     @Test
     void resolveMixedIdsPreservesOrder(@TempDir Path tempDir) throws Exception {
         Files.createDirectory(tempDir.resolve("skills"));
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         List<AgentSkillRepository> out = registry.resolve(
                 List.of("classpath:skills", "workspace:skills", "classpath:skills"), tempDir.toString());
         assertEquals(3, out.size());
@@ -170,7 +170,7 @@ class SkillRegistryTest {
 
     @Test
     void resolveResultIsUnmodifiable() throws Exception {
-        SkillRegistry registry = SkillRegistry.fromClasspathConfig(new SkillsConfig(null, "skills"));
+        SkillRegistry registry = SkillRegistry.fromClasspathBase("skills");
         List<AgentSkillRepository> out = registry.resolve(List.of(CLASSPATH_KEY), "/tmp");
         AgentSkillRepository rogue = new ClasspathSkillRepository("skills");
         assertThrows(UnsupportedOperationException.class, () -> out.add(rogue));

@@ -1,10 +1,10 @@
 ## 1. SQLite配置层
 
-- [ ] 1.1 新增SQLite JDBC依赖到pom.xml（org.xerial:sqlite-jdbc）
-- [ ] 1.2 编写schema.sql：model_config、system_prompt、tool_config、skill_config、mcp_config、agent_config（含route字段）、agent_tool、agent_skill、agent_mcp建表DDL
-- [ ] 1.3 编写init-data.sql：默认model（apiKey写${MINIMAX_API_KEY:}占位符）、默认prompt、默认tool、默认skill、默认agent（route="/api/chat"）
-- [ ] 1.4 定义数据类型record：ModelConfigRecord、SystemPromptRecord、ToolConfigRecord、SkillConfigRecord、McpConfigRecord、AgentConfigRecord
-- [ ] 1.5 实现ConfigStore接口
+- [x] 1.1 新增SQLite JDBC依赖到pom.xml（org.xerial:sqlite-jdbc）
+- [x] 1.2 编写schema.sql：model_config、system_prompt、tool_config、skill_config、mcp_config、agent_config（含route字段）、agent_tool、agent_skill、agent_mcp建表DDL
+- [x] 1.3 编写init-data.sql：默认model（apiKey写${MINIMAX_API_KEY:}占位符）、默认prompt、默认tool、默认skill、默认agent（route="/api/chat"）
+- [x] 1.4 定义数据类型record：ModelConfigRecord、SystemPromptRecord、ToolConfigRecord、SkillConfigRecord、McpConfigRecord、AgentConfigRecord
+- [x] 1.5 实现ConfigStore接口
 - [ ] 1.6 实现SqliteConfigStore：JDBC连接管理、schema.sql执行、init-data.sql占位符预渲染（逐行PlaceholderResolver.resolve()）后执行、WAL模式开启、全部CRUD操作
 - [ ] 1.7 实现system prompt解析：inline/file/classpath三种source_type
 - [ ] 1.8 实现agent关联表CRUD：agent_tool、agent_skill、agent_mcp的读写

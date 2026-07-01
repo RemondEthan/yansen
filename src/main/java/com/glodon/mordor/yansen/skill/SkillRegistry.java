@@ -1,6 +1,6 @@
 package com.glodon.mordor.yansen.skill;
 
-import com.glodon.mordor.yansen.config.SkillsConfig;
+import com.glodon.mordor.yansen.config.store.SkillConfigRecord;
 import io.agentscope.core.skill.repository.AgentSkillRepository;
 import io.agentscope.core.skill.repository.ClasspathSkillRepository;
 import io.agentscope.core.skill.repository.FileSystemSkillRepository;
@@ -117,32 +117,53 @@ public record SkillRegistry(Map<String, AgentSkillRepository> classpathRepos) {
     }
 
     /**
-     * Pre-register classpath skill sources declared in {@link SkillsConfig}. The
-     * {@code workspaceDir} field is deliberately ignored: workspace sources are agent-scoped
-     * and are built on demand via {@link #resolve(Collection, String)}.
-     *
-     * <p>Configuration errors (e.g. an unreadable classpath base) are not swallowed: they
-     * propagate as {@link IllegalStateException} so the operator notices at startup rather
-     * than discovering the problem mid-request.</p>
+     * Maps a skill_config row to the resolve id understood by {@link #resolve(Collection, String)}.
      */
-    public static SkillRegistry fromClasspathConfig(SkillsConfig config) {
-        if (config == null) {
+    public static String toResolveId(SkillConfigRecord record) {
+        return switch (record.sourceType()) {
+            case "classpath" -> CLASSPATH_PREFIX + record.sourceRef();
+            case "workspace" -> WORKSPACE_PREFIX + record.sourceRef();
+            default -> throw new IllegalStateException(
+                    "Unknown skill sourceType '" + record.sourceType() + "' for skill '" + record.skillId() + "'");
+        };
+    }
+
+    /**
+     * Pre-register classpath skill repositories declared in the config database.
+     */
+    public static SkillRegistry fromSkillRecords(List<SkillConfigRecord> records) {
+        if (records == null || records.isEmpty()) {
             return new SkillRegistry(Map.of());
         }
-        String classpathBase = config.classpathBase();
+        Map<String, AgentSkillRepository> map = new LinkedHashMap<>();
+        for (SkillConfigRecord record : records) {
+            if (!"classpath".equals(record.sourceType())) {
+                continue;
+            }
+            String resolveId = toResolveId(record);
+            if (map.containsKey(resolveId)) {
+                continue;
+            }
+            try {
+                map.put(resolveId, new ClasspathSkillRepository(record.sourceRef()));
+                log.info("registered classpath skill source '{}' from skill '{}'", resolveId, record.skillId());
+            } catch (IOException e) {
+                throw new IllegalStateException(
+                        "Failed to build classpath skill repository for skill '" + record.skillId()
+                                + "' base '" + record.sourceRef() + "'", e);
+            }
+        }
+        return new SkillRegistry(map);
+    }
+
+    /**
+     * Pre-register a single classpath base (used in tests).
+     */
+    public static SkillRegistry fromClasspathBase(String classpathBase) {
         if (classpathBase == null || classpathBase.isBlank()) {
             return new SkillRegistry(Map.of());
         }
-        String id = CLASSPATH_PREFIX + classpathBase;
-        try {
-            AgentSkillRepository repo = new ClasspathSkillRepository(classpathBase);
-            Map<String, AgentSkillRepository> map = new LinkedHashMap<>();
-            map.put(id, repo);
-            log.info("registered classpath skill source '{}'", id);
-            return new SkillRegistry(map);
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "Failed to build classpath skill repository for base '" + classpathBase + "'", e);
-        }
+        return fromSkillRecords(List.of(new SkillConfigRecord(
+                "legacy", "Legacy", "classpath", classpathBase, null, null)));
     }
 }
