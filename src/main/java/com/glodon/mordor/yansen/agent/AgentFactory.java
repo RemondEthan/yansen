@@ -5,6 +5,7 @@ import com.glodon.mordor.yansen.config.ModelSettings;
 import com.glodon.mordor.yansen.config.store.AgentConfigRecord;
 import com.glodon.mordor.yansen.config.store.ConfigStore;
 import com.glodon.mordor.yansen.config.store.ModelConfigRecord;
+import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
 import com.glodon.mordor.yansen.config.store.SystemPromptRecord;
 import com.glodon.mordor.yansen.config.store.ToolConfigRecord;
 import com.glodon.mordor.yansen.skill.SkillRegistry;
@@ -19,6 +20,9 @@ import io.agentscope.harness.agent.tools.ToolsConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -50,7 +54,10 @@ public final class AgentFactory {
                 .orElseThrow(() -> new AgentNotFoundException(
                         "model '" + record.modelId() + "' not found for agent '" + record.agentId() + "'"));
 
-        String workspace = record.workspace() == null ? "" : record.workspace();
+        String workspace = ConfigValueResolver.resolveStored(record.workspace());
+        if (workspace == null || workspace.isBlank()) {
+            throw new IllegalArgumentException("workspace path must not be blank");
+        }
         String systemPrompt = resolveSystemPrompt(record);
 
         ModelSettings modelSettings = modelRecord.toModelSettings();
@@ -99,12 +106,29 @@ public final class AgentFactory {
             return DEFAULT_SYSTEM_PROMPT;
         }
         return configStore.getPrompt(promptId)
-                .map(configStore::resolvePromptContent)
+                .map(this::resolvePromptForRuntime)
                 .orElseGet(() -> {
                     log.warn("system prompt id {} not found for agent '{}', using default",
                             promptId, record.agentId());
                     return DEFAULT_SYSTEM_PROMPT;
                 });
+    }
+
+    private String resolvePromptForRuntime(SystemPromptRecord prompt) {
+        return switch (prompt.sourceType()) {
+            case "inline" -> ConfigValueResolver.resolveStored(prompt.sourceRef());
+            case "file" -> readPromptFile(ConfigValueResolver.resolveStored(prompt.sourceRef()));
+            case "classpath" -> ConfigValueResolver.resolveStored(configStore.resolvePromptContent(prompt));
+            default -> throw new IllegalArgumentException("Unknown source type: " + prompt.sourceType());
+        };
+    }
+
+    private static String readPromptFile(String path) {
+        try {
+            return Files.readString(Path.of(path));
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to read prompt file: " + path, e);
+        }
     }
 
     private List<String> resolveEnabledToolIds(AgentConfigRecord record) {

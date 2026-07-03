@@ -1,6 +1,5 @@
 package com.glodon.mordor.yansen.config.store.sqlite;
 
-import com.glodon.mordor.yansen.config.PlaceholderResolver;
 import com.glodon.mordor.yansen.config.store.AgentConfigRecord;
 import com.glodon.mordor.yansen.config.store.ConfigReferenceException;
 import com.glodon.mordor.yansen.config.store.ConfigStore;
@@ -68,7 +67,7 @@ public class SqliteConfigStore implements ConfigStore {
             try {
                 executeResource(conn, SCHEMA_RESOURCE);
                 if (isEmpty(conn, "agent_config")) {
-                    executeResourceWithPlaceholder(conn, INIT_DATA_RESOURCE);
+                    executeResource(conn, INIT_DATA_RESOURCE);
                 }
                 conn.commit();
             } catch (SQLException | RuntimeException e) {
@@ -91,15 +90,6 @@ public class SqliteConfigStore implements ConfigStore {
     private void executeResource(Connection conn, String resourcePath) throws SQLException {
         String sql = readResource(resourcePath);
         executeMultiStatement(conn, sql);
-    }
-    
-    private void executeResourceWithPlaceholder(Connection conn, String resourcePath) throws SQLException {
-        String sql = readResource(resourcePath);
-        StringBuilder resolved = new StringBuilder();
-        for (String line : sql.split("\n")) {
-            resolved.append(PlaceholderResolver.resolve(line)).append("\n");
-        }
-        executeMultiStatement(conn, resolved.toString());
     }
     
     private void executeMultiStatement(Connection conn, String sql) throws SQLException {

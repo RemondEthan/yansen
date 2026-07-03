@@ -12,6 +12,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -55,6 +56,12 @@ class SqliteConfigStoreSchemaInitTest {
         assertFalse(store.listAgents().isEmpty());
         assertTrue(store.getAgent("default").isPresent());
         assertTrue(store.getModel("default").isPresent());
+
+        var model = store.getModel("default").orElseThrow();
+        assertEquals("${MINIMAX_API_KEY:}", model.apiKey());
+
+        var agent = store.getAgent("default").orElseThrow();
+        assertEquals("${YANSEN_WORKSPACE:./agentscope}", agent.workspace());
     }
 
     private boolean tableExists(String tableName) throws SQLException {

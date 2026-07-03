@@ -1,7 +1,7 @@
 -- Yansen default configuration data
 -- Inserted only when agent_config table is empty (first startup).
--- String values may contain ${ENV_VAR:default} placeholders — SqliteConfigStore
--- pre-renders them via PlaceholderResolver before execution.
+-- Placeholder expressions (${ENV_VAR:default}) are stored literally in SQLite and
+-- resolved at agent instantiation time via ConfigValueResolver (not at insert time).
 
 -- Default model (MiniMax-M3 via openai-compatible provider)
 INSERT INTO model_config (modelId, provider, modelName, baseUrl, apiKey, maxRetries, connectTimeoutSeconds, readTimeoutSeconds, writeTimeoutSeconds)
@@ -24,7 +24,7 @@ VALUES ('default', 'Default skills', 'classpath', 'skills');
 -- INSERT into system_prompt above. This is safe because init-data.sql runs only
 -- when agent_config is empty (first startup), so system_prompt is also empty.
 INSERT INTO agent_config (agentId, name, agentType, route, modelId, systemPromptId, workspace)
-VALUES ('default', 'Default agent', 'default', '/api/chat', 'default', 1, '${YANSEN_WORKSPACE:}');
+VALUES ('default', 'Default agent', 'default', '/api/chat', 'default', 1, '${YANSEN_WORKSPACE:./agentscope}');
 
 -- Agent-tool association
 INSERT INTO agent_tool (agentId, toolId)
