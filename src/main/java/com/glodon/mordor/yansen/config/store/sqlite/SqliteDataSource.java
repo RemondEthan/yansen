@@ -50,9 +50,7 @@ public class SqliteDataSource implements AppDataSource {
         // Allow startup even if pool can't connect immediately
         config.setInitializationFailTimeout(-1);
         
-        config.setConnectionInitSql(
-            "PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON"
-        );
+        config.setConnectionInitSql("PRAGMA journal_mode=WAL");
         
         this.delegate = new HikariDataSource(config);
     }

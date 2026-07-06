@@ -3,6 +3,7 @@ package com.glodon.mordor.yansen.config.store.sqlite;
 import com.glodon.mordor.yansen.config.store.AgentConfigRecord;
 import com.glodon.mordor.yansen.config.store.ConfigReferenceException;
 import com.glodon.mordor.yansen.config.store.ConfigStore;
+import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
 import com.glodon.mordor.yansen.config.store.McpConfigRecord;
 import com.glodon.mordor.yansen.config.store.ModelConfigRecord;
 import com.glodon.mordor.yansen.config.store.dao.McpDao;
@@ -30,8 +31,8 @@ import java.util.Optional;
  * @date: 2026-07-01
  * @description: SQLite implementation of ConfigStore.
  * Uses HikariCP connection pool for thread-safe concurrent access.
- * Transaction lifecycle is managed by each DAO method independently (try-with-resources pattern).
- * This store class is a thin delegation layer — no transaction management needed here.
+ * Single-table writes are delegated to each DAO. Multi-table agent writes use
+ * {@link SqliteTransactions} so agent rows and association tables share one transaction.
  */
 public class SqliteConfigStore implements ConfigStore {
     
@@ -165,16 +166,17 @@ public class SqliteConfigStore implements ConfigStore {
     
     @Override
     public String resolvePromptContent(SystemPromptRecord record) {
+        String sourceRef = ConfigValueResolver.resolveStored(record.sourceRef());
         return switch (record.sourceType()) {
-            case "inline" -> record.sourceRef();
+            case "inline" -> sourceRef;
             case "file" -> {
                 try {
-                    yield Files.readString(Path.of(record.sourceRef()));
+                    yield Files.readString(Path.of(sourceRef));
                 } catch (IOException e) {
-                    throw new RuntimeException("Failed to read prompt file: " + record.sourceRef(), e);
+                    throw new RuntimeException("Failed to read prompt file: " + sourceRef, e);
                 }
             }
-            case "classpath" -> readResource(record.sourceRef());
+            case "classpath" -> readResource(sourceRef);
             default -> throw new IllegalArgumentException("Unknown source type: " + record.sourceType());
         };
     }
@@ -277,61 +279,34 @@ public class SqliteConfigStore implements ConfigStore {
     
     @Override
     public AgentConfigRecord createAgent(AgentConfigRecord record) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                agentDao.create(conn, record);
-                associationDao.setToolIds(conn, record.agentId(), record.toolIds());
-                associationDao.setSkillIds(conn, record.agentId(), record.skillIds());
-                associationDao.setMcpIds(conn, record.agentId(), record.mcpIds());
-                conn.commit();
-            } catch (Exception e) {
-                conn.rollback();
-                throw new RuntimeException("Failed to create agent", e);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to create agent", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "create agent", conn -> {
+            agentDao.create(conn, record);
+            associationDao.setToolIds(conn, record.agentId(), record.toolIds());
+            associationDao.setSkillIds(conn, record.agentId(), record.skillIds());
+            associationDao.setMcpIds(conn, record.agentId(), record.mcpIds());
+        });
         return getAgent(record.agentId()).orElseThrow();
     }
     
     @Override
     public AgentConfigRecord updateAgent(AgentConfigRecord record) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                agentDao.update(conn, record);
-                associationDao.setToolIds(conn, record.agentId(), record.toolIds());
-                associationDao.setSkillIds(conn, record.agentId(), record.skillIds());
-                associationDao.setMcpIds(conn, record.agentId(), record.mcpIds());
-                conn.commit();
-            } catch (Exception e) {
-                conn.rollback();
-                throw new RuntimeException("Failed to update agent", e);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to update agent", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "update agent", conn -> {
+            agentDao.update(conn, record);
+            associationDao.setToolIds(conn, record.agentId(), record.toolIds());
+            associationDao.setSkillIds(conn, record.agentId(), record.skillIds());
+            associationDao.setMcpIds(conn, record.agentId(), record.mcpIds());
+        });
         return getAgent(record.agentId()).orElseThrow();
     }
     
     @Override
     public void deleteAgent(String agentId) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            try {
-                associationDao.setToolIds(conn, agentId, List.of());
-                associationDao.setSkillIds(conn, agentId, List.of());
-                associationDao.setMcpIds(conn, agentId, List.of());
-                agentDao.delete(conn, agentId);
-                conn.commit();
-            } catch (Exception e) {
-                conn.rollback();
-                throw new RuntimeException("Failed to delete agent", e);
-            }
-        } catch (SQLException e) {
-            throw new RuntimeException("Failed to delete agent", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "delete agent", conn -> {
+            associationDao.setToolIds(conn, agentId, List.of());
+            associationDao.setSkillIds(conn, agentId, List.of());
+            associationDao.setMcpIds(conn, agentId, List.of());
+            agentDao.delete(conn, agentId);
+        });
     }
     
     // ========== Agent associations ==========

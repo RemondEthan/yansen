@@ -1,6 +1,7 @@
 package com.glodon.mordor.yansen.skill;
 
 import com.glodon.mordor.yansen.config.store.SkillConfigRecord;
+import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
 import io.agentscope.core.skill.repository.AgentSkillRepository;
 import io.agentscope.core.skill.repository.ClasspathSkillRepository;
 import io.agentscope.core.skill.repository.FileSystemSkillRepository;
@@ -120,9 +121,10 @@ public record SkillRegistry(Map<String, AgentSkillRepository> classpathRepos) {
      * Maps a skill_config row to the resolve id understood by {@link #resolve(Collection, String)}.
      */
     public static String toResolveId(SkillConfigRecord record) {
+        String sourceRef = ConfigValueResolver.resolveStored(record.sourceRef());
         return switch (record.sourceType()) {
-            case "classpath" -> CLASSPATH_PREFIX + record.sourceRef();
-            case "workspace" -> WORKSPACE_PREFIX + record.sourceRef();
+            case "classpath" -> CLASSPATH_PREFIX + sourceRef;
+            case "workspace" -> WORKSPACE_PREFIX + sourceRef;
             default -> throw new IllegalStateException(
                     "Unknown skill sourceType '" + record.sourceType() + "' for skill '" + record.skillId() + "'");
         };
@@ -140,12 +142,13 @@ public record SkillRegistry(Map<String, AgentSkillRepository> classpathRepos) {
             if (!"classpath".equals(record.sourceType())) {
                 continue;
             }
-            String resolveId = toResolveId(record);
+            String sourceRef = ConfigValueResolver.resolveStored(record.sourceRef());
+            String resolveId = CLASSPATH_PREFIX + sourceRef;
             if (map.containsKey(resolveId)) {
                 continue;
             }
             try {
-                map.put(resolveId, new ClasspathSkillRepository(record.sourceRef()));
+                map.put(resolveId, new ClasspathSkillRepository(sourceRef));
                 log.info("registered classpath skill source '{}' from skill '{}'", resolveId, record.skillId());
             } catch (IOException e) {
                 throw new IllegalStateException(

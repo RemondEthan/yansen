@@ -4,8 +4,8 @@ import com.glodon.mordor.yansen.AgentContext;
 import com.glodon.mordor.yansen.config.ModelSettings;
 import com.glodon.mordor.yansen.config.store.AgentConfigRecord;
 import com.glodon.mordor.yansen.config.store.ConfigStore;
-import com.glodon.mordor.yansen.config.store.ModelConfigRecord;
 import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
+import com.glodon.mordor.yansen.config.store.ModelConfigRecord;
 import com.glodon.mordor.yansen.config.store.SystemPromptRecord;
 import com.glodon.mordor.yansen.config.store.ToolConfigRecord;
 import com.glodon.mordor.yansen.skill.SkillRegistry;
@@ -20,9 +20,6 @@ import io.agentscope.harness.agent.tools.ToolsConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -50,9 +47,10 @@ public final class AgentFactory {
     }
 
     public YansenAgent create(AgentConfigRecord record) {
-        ModelConfigRecord modelRecord = configStore.getModel(record.modelId())
+        String modelId = ConfigValueResolver.resolveStored(record.modelId());
+        ModelConfigRecord modelRecord = configStore.getModel(modelId)
                 .orElseThrow(() -> new AgentNotFoundException(
-                        "model '" + record.modelId() + "' not found for agent '" + record.agentId() + "'"));
+                        "model '" + modelId + "' not found for agent '" + record.agentId() + "'"));
 
         String workspace = ConfigValueResolver.resolveStored(record.workspace());
         if (workspace == null || workspace.isBlank()) {
@@ -66,7 +64,8 @@ public final class AgentFactory {
         Toolkit toolkit = context.toolRegistry().buildToolkit(enabledToolIds);
         List<AgentSkillRepository> skillRepos =
                 context.skillRegistry().resolve(resolveSkillSourceIds(record), workspace);
-        Map<String, McpServerConfig> mcpServers = context.mcpRegistry().resolve(record.mcpIds());
+        Map<String, McpServerConfig> mcpServers = context.mcpRegistry().resolve(
+                record.mcpIds().stream().map(ConfigValueResolver::resolveStored).toList());
 
         HarnessAgent.Builder builder = HarnessAgent.builder()
                 .name(record.agentId())
@@ -96,7 +95,10 @@ public final class AgentFactory {
             builder.toolsConfig(toolsConfig);
         }
 
-        log.info("Instantiated agent '{}' type={} route={}", record.agentId(), record.agentType(), record.route());
+        log.info("Instantiated agent '{}' type={} route={}",
+                record.agentId(),
+                ConfigValueResolver.resolveStored(record.agentType()),
+                ConfigValueResolver.resolveStored(record.route()));
         return new YansenAgentImpl(record.agentId(), builder.build(), chatTimeoutSeconds);
     }
 
@@ -115,24 +117,13 @@ public final class AgentFactory {
     }
 
     private String resolvePromptForRuntime(SystemPromptRecord prompt) {
-        return switch (prompt.sourceType()) {
-            case "inline" -> ConfigValueResolver.resolveStored(prompt.sourceRef());
-            case "file" -> readPromptFile(ConfigValueResolver.resolveStored(prompt.sourceRef()));
-            case "classpath" -> ConfigValueResolver.resolveStored(configStore.resolvePromptContent(prompt));
-            default -> throw new IllegalArgumentException("Unknown source type: " + prompt.sourceType());
-        };
-    }
-
-    private static String readPromptFile(String path) {
-        try {
-            return Files.readString(Path.of(path));
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to read prompt file: " + path, e);
-        }
+        String content = configStore.resolvePromptContent(prompt);
+        return ConfigValueResolver.resolveStored(content);
     }
 
     private List<String> resolveEnabledToolIds(AgentConfigRecord record) {
         return record.toolIds().stream()
+                .map(ConfigValueResolver::resolveStored)
                 .flatMap(toolId -> configStore.getTool(toolId).stream())
                 .filter(ToolConfigRecord::enabled)
                 .map(ToolConfigRecord::toolId)
@@ -141,6 +132,7 @@ public final class AgentFactory {
 
     private List<String> resolveSkillSourceIds(AgentConfigRecord record) {
         return record.skillIds().stream()
+                .map(ConfigValueResolver::resolveStored)
                 .map(skillId -> configStore.getSkill(skillId)
                         .map(SkillRegistry::toResolveId)
                         .orElseThrow(() -> new AgentNotFoundException(

@@ -77,7 +77,7 @@ yansen.yml (server)                  SQLite (全部业务配置)
 
 **理由**：基础服务配置修改频率低且需重启生效，适合文件；业务配置需要运行时管理（CRUD API），适合数据库。两者职责不交叉，不存在"空库去YAML读"的场景。
 
-### 2. SQLite初始化：SQL脚本 + 占位符预渲染，无YAML迁移
+### 2. SQLite初始化：SQL脚本，占位符字面量入库
 
 **选择**：SQLite通过classpath中的SQL脚本初始化：
 - `schema.sql` — 建表DDL（`CREATE TABLE IF NOT EXISTS`，幂等）
@@ -85,20 +85,20 @@ yansen.yml (server)                  SQLite (全部业务配置)
 
 启动逻辑：表不存在→执行schema.sql；agent_config表空→执行init-data.sql。
 
-**占位符预渲染**：`init-data.sql`中的字符串值可包含`${ENV_VAR:default}`占位符（写在SQL字符串字面量内，保持SQL语法合法）。`SqliteConfigStore`执行init-data.sql前，逐行扫描并对含`${...}`的字符串值调用`PlaceholderResolver.resolve()`替换为环境变量值。示例：
+**占位符存储**：`init-data.sql`中的字符串值可包含`${ENV_VAR:default}`占位符（写在SQL字符串字面量内，保持SQL语法合法）。占位符以字面量形式写入SQLite，**不做**插入时的环境变量预渲染。env替换在agent实例化时通过`ConfigValueResolver.resolveStored()`执行（`ModelConfigRecord.toModelSettings()`、agent workspace等）。示例：
 
 ```sql
 INSERT INTO model_config (modelId, provider, modelName, baseUrl, apiKey, ...)
 VALUES ('default', 'openai-compatible', 'MiniMax-M3', 'https://api.minimaxi.com/v1', '${MINIMAX_API_KEY:}', ...);
 ```
 
-预渲染仅在init-data.sql执行时生效，后续CRUD API写入的值不做占位符解析（存什么是什么）。
+CRUD API写入的值同样不做占位符解析（存什么是什么）。
 
 **替代方案**：
-- (a) init-data.sql硬编码空串，启动后手动CRUD设置apiKey——首次启动agent不可用，是可用性回退
-- (b) YAML→SQLite自动迁移——引入"两源合一"的语义歧义，且yansen.yml不再包含业务配置段，迁移无数据源
+- (a) init-data.sql执行前预渲染占位符——env值固化到DB，换密钥需改库；与"配置可移植"目标冲突
+- (b) init-data.sql硬编码空串，启动后手动CRUD设置apiKey——首次启动agent不可用
 
-**理由**：SQL脚本是最直接的初始化方式。占位符写在SQL字符串字面量内，保持SQL语法合法，IDE/lint不报错。预渲染复用现有`PlaceholderResolver`，与yansen.yml占位符语法一致，运维心智模型统一。不存在YAML迁移逻辑，不存在"空库去别处读"的路径。
+**理由**：占位符存库、运行时解析，与yansen.yml占位符语法一致，且密钥变更只需重启/重新实例化agent，无需改库。不存在YAML迁移逻辑。
 
 ### 3. Agent是工程内的类，配置驱动实例化
 

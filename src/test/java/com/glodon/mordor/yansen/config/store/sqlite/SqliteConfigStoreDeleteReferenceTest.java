@@ -42,7 +42,8 @@ class SqliteConfigStoreDeleteReferenceTest {
 
         assertEquals("model", ex.entityType());
         assertEquals("default", ex.entityId());
-        assertEquals(List.of("default"), ex.referencingAgents());
+        assertTrue(ex.referencingAgents().contains("default"));
+        assertTrue(ex.referencingAgents().contains("nl2sql"));
         assertTrue(store.getModel("default").isPresent());
     }
 

@@ -6,7 +6,10 @@ target/
 # Runtime data (SQLite config DB at repo root, agent workspace)
 /store/
 agentscope/
+/io/
 *.db
+*.db-shm
+*.db-wal
 
 # Local env with secrets — copy from yansen.env.example instead
 src/main/scripts/bin/yansen.env

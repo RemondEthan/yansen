@@ -55,8 +55,10 @@ public final class ApiModule {
                 routeRegistry, agentRegistry, sseMapper, heartbeatExecutor,
                 serverSettings.keepAliveIntervalSecondsOrDefault(),
                 serverSettings.sseEventTimeoutSecondsOrDefault());
-        new AgentRouteRegistrar(routeRegistry, chatHandler, streamHandler)
-                .registerAgents(routes, configStore.listAgents());
+        AgentRouteRegistrar routeRegistrar = new AgentRouteRegistrar(routeRegistry, chatHandler, streamHandler);
+        routeRegistrar.registerAgents(routes, configStore.listAgents());
+
+        new ConfigController(configStore, agentRegistry, routeRegistrar, routes).registerOn(routes);
 
         GlobalExceptionMapper.register(routes);
         return new ApiModule(heartbeatExecutor, configStore, agentRegistry, routeRegistry);

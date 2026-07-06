@@ -1,5 +1,8 @@
 -- Yansen configuration database schema
 -- All tables use CREATE TABLE IF NOT EXISTS for idempotent execution.
+-- Referential integrity (model/prompt/tool/skill/mcp references) is enforced in
+-- application code (ConfigController.validateAgentReferences, delete reference checks),
+-- not via database FOREIGN KEY constraints.
 
 -- ============================================================
 -- Model configuration
@@ -77,9 +80,7 @@ CREATE TABLE IF NOT EXISTS agent_config (
     systemPromptId      INTEGER,
     workspace           TEXT NOT NULL DEFAULT '',
     createdAt           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    updatedAt           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-    FOREIGN KEY (modelId)        REFERENCES model_config(modelId),
-    FOREIGN KEY (systemPromptId) REFERENCES system_prompt(id)
+    updatedAt           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 -- ============================================================
@@ -88,23 +89,20 @@ CREATE TABLE IF NOT EXISTS agent_config (
 CREATE TABLE IF NOT EXISTS agent_tool (
     agentId             TEXT NOT NULL,
     toolId              TEXT NOT NULL,
-    PRIMARY KEY (agentId, toolId),
-    FOREIGN KEY (agentId) REFERENCES agent_config(agentId),
-    FOREIGN KEY (toolId)  REFERENCES tool_config(toolId)
+    PRIMARY KEY (agentId, toolId)
 );
 
 CREATE TABLE IF NOT EXISTS agent_skill (
     agentId             TEXT NOT NULL,
     skillId             TEXT NOT NULL,
-    PRIMARY KEY (agentId, skillId),
-    FOREIGN KEY (agentId) REFERENCES agent_config(agentId),
-    FOREIGN KEY (skillId) REFERENCES skill_config(skillId)
+    PRIMARY KEY (agentId, skillId)
 );
 
 CREATE TABLE IF NOT EXISTS agent_mcp (
     agentId             TEXT NOT NULL,
     mcpId               TEXT NOT NULL,
-    PRIMARY KEY (agentId, mcpId),
-    FOREIGN KEY (agentId) REFERENCES agent_config(agentId),
-    FOREIGN KEY (mcpId)  REFERENCES mcp_config(mcpId)
+    PRIMARY KEY (agentId, mcpId)
 );
+
+-- Route must be unique across agents (matches MySQL uk_route; enforced at DB layer).
+CREATE UNIQUE INDEX IF NOT EXISTS uk_agent_config_route ON agent_config(route);

@@ -1,6 +1,8 @@
 -- Yansen configuration database schema (MySQL)
+-- FUTURE: not used at runtime yet — ConfigStoreFactory supports SQLite only.
+-- Reserved DDL for planned MySQL ConfigStore; do not point database.type=mysql until implemented.
 -- All tables use CREATE TABLE IF NOT EXISTS for idempotent execution.
--- Cascade deletes are handled in application code, not via ON DELETE CASCADE.
+-- Referential integrity is enforced in application code, not via FOREIGN KEY constraints.
 
 -- ============================================================
 -- Model configuration
@@ -88,9 +90,7 @@ CREATE TABLE IF NOT EXISTS agent_config (
     PRIMARY KEY (agentId),
     UNIQUE KEY uk_route (route),
     KEY idx_modelId (modelId),
-    KEY idx_systemPromptId (systemPromptId),
-    CONSTRAINT fk_agent_model FOREIGN KEY (modelId) REFERENCES model_config(modelId) ON DELETE RESTRICT,
-    CONSTRAINT fk_agent_prompt FOREIGN KEY (systemPromptId) REFERENCES system_prompt(id) ON DELETE RESTRICT
+    KEY idx_systemPromptId (systemPromptId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ============================================================
@@ -99,23 +99,17 @@ CREATE TABLE IF NOT EXISTS agent_config (
 CREATE TABLE IF NOT EXISTS agent_tool (
     agentId VARCHAR(255) NOT NULL,
     toolId  VARCHAR(255) NOT NULL,
-    PRIMARY KEY (agentId, toolId),
-    CONSTRAINT fk_at_agent FOREIGN KEY (agentId) REFERENCES agent_config(agentId) ON DELETE RESTRICT,
-    CONSTRAINT fk_at_tool  FOREIGN KEY (toolId)  REFERENCES tool_config(toolId)  ON DELETE RESTRICT
+    PRIMARY KEY (agentId, toolId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS agent_skill (
     agentId VARCHAR(255) NOT NULL,
     skillId VARCHAR(255) NOT NULL,
-    PRIMARY KEY (agentId, skillId),
-    CONSTRAINT fk_as_agent FOREIGN KEY (agentId) REFERENCES agent_config(agentId) ON DELETE RESTRICT,
-    CONSTRAINT fk_as_skill FOREIGN KEY (skillId) REFERENCES skill_config(skillId) ON DELETE RESTRICT
+    PRIMARY KEY (agentId, skillId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS agent_mcp (
     agentId VARCHAR(255) NOT NULL,
     mcpId   VARCHAR(255) NOT NULL,
-    PRIMARY KEY (agentId, mcpId),
-    CONSTRAINT fk_am_agent FOREIGN KEY (agentId) REFERENCES agent_config(agentId) ON DELETE RESTRICT,
-    CONSTRAINT fk_am_mcp   FOREIGN KEY (mcpId)   REFERENCES mcp_config(mcpId)    ON DELETE RESTRICT
+    PRIMARY KEY (agentId, mcpId)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

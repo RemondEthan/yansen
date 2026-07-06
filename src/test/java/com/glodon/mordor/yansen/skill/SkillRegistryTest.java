@@ -189,4 +189,11 @@ class SkillRegistryTest {
         assertEquals(1, out.size());
         assertSame(custom, out.get(0));
     }
+
+    @Test
+    void toResolveId_resolvesSourceRefPlaceholder() {
+        SkillConfigRecord record = new SkillConfigRecord(
+                "s1", "Skills", "classpath", "${SKILLS_BASE:skills}", null, null);
+        assertEquals("classpath:skills", SkillRegistry.toResolveId(record));
+    }
 }

@@ -36,15 +36,10 @@ public class SqliteAgentAssociationDao implements AgentAssociationDao {
     
     @Override
     public void setToolIds(String agentId, List<String> toolIds) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            setToolIds(conn, agentId, toolIds);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed in setToolIds", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "set agent tools", conn -> setToolIds(conn, agentId, toolIds));
     }
 
+    /** Replaces tool associations on a caller-managed connection; does not commit. */
     void setToolIds(Connection conn, String agentId, List<String> toolIds) {
         execute(conn, AgentAssociationDao.DELETE_TOOLS, agentId);
         for (String toolId : toolIds) {
@@ -63,15 +58,10 @@ public class SqliteAgentAssociationDao implements AgentAssociationDao {
     
     @Override
     public void setSkillIds(String agentId, List<String> skillIds) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            setSkillIds(conn, agentId, skillIds);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed in setSkillIds", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "set agent skills", conn -> setSkillIds(conn, agentId, skillIds));
     }
 
+    /** Replaces skill associations on a caller-managed connection; does not commit. */
     void setSkillIds(Connection conn, String agentId, List<String> skillIds) {
         execute(conn, AgentAssociationDao.DELETE_SKILLS, agentId);
         for (String skillId : skillIds) {
@@ -90,15 +80,10 @@ public class SqliteAgentAssociationDao implements AgentAssociationDao {
     
     @Override
     public void setMcpIds(String agentId, List<String> mcpIds) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            setMcpIds(conn, agentId, mcpIds);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed in setMcpIds", e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "set agent mcps", conn -> setMcpIds(conn, agentId, mcpIds));
     }
 
+    /** Replaces MCP associations on a caller-managed connection; does not commit. */
     void setMcpIds(Connection conn, String agentId, List<String> mcpIds) {
         execute(conn, AgentAssociationDao.DELETE_MCPS, agentId);
         for (String mcpId : mcpIds) {

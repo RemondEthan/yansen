@@ -1,5 +1,6 @@
 package com.glodon.mordor.yansen.mcp;
 
+import com.glodon.mordor.yansen.config.store.McpConfigRecord;
 import io.agentscope.harness.agent.tools.McpServerConfig;
 import org.junit.jupiter.api.Test;
 
@@ -80,6 +81,14 @@ class McpRegistryTest {
         McpRegistry registry = McpRegistry.fromSettings(Map.of("github", stub("stdio")));
         Map<String, McpServerConfig> out = registry.resolve(List.of("github"));
         assertThrows(UnsupportedOperationException.class, () -> out.put("rogue", stub("stdio")));
+    }
+
+    @Test
+    void fromMcpRecords_resolvesPlaceholdersInConfigJson() {
+        McpConfigRecord record = new McpConfigRecord(
+                "github", "GitHub", "{\"transport\":\"${MCP_TRANSPORT:stdio}\"}", null, null);
+        McpRegistry registry = McpRegistry.fromMcpRecords(List.of(record));
+        assertEquals("stdio", registry.resolve(List.of("github")).get("github").getTransport());
     }
 
     @Test

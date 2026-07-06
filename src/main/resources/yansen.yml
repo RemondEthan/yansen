@@ -9,9 +9,13 @@ server:
   # exceeds keepAliveIntervalSeconds so SSE heartbeats keep the stream alive.
 
 database:
+  # Production today: database.type must be "sqlite" (ConfigStoreFactory).
   type: "${YANSEN_DB_TYPE:sqlite}"
   sqlite:
     path: "${YANSEN_SQLITE_PATH:store/yansen.db}"
+  # FUTURE: MySQL ConfigStore is not implemented yet. Keys below are reserved so
+  # yansen.yml shape stays stable; setting database.type=mysql will fail at startup.
+  # DDL placeholder: db/mysql/schema.sql
   mysql:
     jdbcUrl: "${YANSEN_MYSQL_JDBC_URL:jdbc:mysql://localhost:3306/yansen?useSSL=false&serverTimezone=UTC}"
     username: "${YANSEN_MYSQL_USER:yansen}"

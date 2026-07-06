@@ -1,6 +1,7 @@
 package com.glodon.mordor.yansen.api;
 
 import com.glodon.mordor.yansen.config.store.AgentConfigRecord;
+import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
 import com.glodon.mordor.yansen.registry.RouteRegistry;
 import io.javalin.apibuilder.ApiBuilder;
 import io.javalin.config.RoutesConfig;
@@ -36,15 +37,27 @@ public final class AgentRouteRegistrar {
     public void registerAgents(RoutesConfig routes, List<AgentConfigRecord> agents) {
         Set<String> seenRoutes = new HashSet<>();
         for (AgentConfigRecord agent : agents) {
-            String route = agent.route();
+            String route = ConfigValueResolver.resolveStored(agent.route());
             if (!seenRoutes.add(route)) {
                 throw new IllegalStateException("Duplicate route in agent configuration: " + route);
             }
-            routeRegistry.register(route, agent.agentId());
-            registerRouteHandlers(routes, route);
-            log.info("Registered agent '{}' at route {} (stream: {}{})",
-                    agent.agentId(), route, route, STREAM_SUFFIX);
+            registerRoute(routes, route, agent.agentId());
         }
+    }
+
+    /** Registers route mapping and Javalin handlers for a single agent (startup or CRUD API). */
+    public void registerRoute(RoutesConfig routes, String route, String agentId) {
+        String resolvedRoute = ConfigValueResolver.resolveStored(route);
+        routeRegistry.register(resolvedRoute, agentId);
+        registerRouteHandlers(routes, resolvedRoute);
+        log.info("Registered agent '{}' at route {} (stream: {}{})",
+                agentId, resolvedRoute, resolvedRoute, STREAM_SUFFIX);
+    }
+
+    /** Marks a route inactive; existing Javalin handlers remain but resolve to 404. */
+    public void unregisterRoute(String route) {
+        routeRegistry.unregister(ConfigValueResolver.resolveStored(route));
+        log.info("Unregistered route {}", route);
     }
 
     private void registerRouteHandlers(RoutesConfig routes, String route) {

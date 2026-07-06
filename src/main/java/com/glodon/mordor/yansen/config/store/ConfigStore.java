@@ -7,7 +7,10 @@ import java.util.Optional;
  * @author: Remond
  * @date: 2026-07-01
  * @description: Read/write interface for all business configuration stored in SQLite.
- * Implementation handles JDBC lifecycle, schema initialization, and placeholder pre-rendering.
+ * Implementation handles JDBC lifecycle and schema initialization.
+ * Stored string values (including {@code ${ENV:default}} placeholders) are persisted literally;
+ * env substitution happens at runtime (agent instantiation, route registration, registry bootstrap)
+ * via {@link ConfigValueResolver}.
  *
  * <p><b>Timestamp convention:</b> All record types include {@code createdAt}/{@code updatedAt} fields.
  * On {@code create} and {@code update} calls, these fields in the input record are <em>ignored</em> —

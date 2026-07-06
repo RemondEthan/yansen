@@ -19,14 +19,15 @@ import java.util.List;
  * Manages connection acquisition from the pool and transaction lifecycle.
  * Subclasses provide only parse() for ResultSet → domain object mapping.
  *
- * <p>Each concrete DAO method follows this pattern:</p>
- * <pre>
- * try (Connection conn = dataSource.getConnection()) {
- *     conn.setAutoCommit(false);
- *     // ... operations
- *     conn.commit();
- * }  // connection returned to pool via try-with-resources
- * </pre>
+ * <p>Two transaction patterns:</p>
+ * <ul>
+ *   <li><b>Standalone public methods</b> — acquire a connection and delegate to
+ *       {@link SqliteTransactions#inTransaction} for a single-table write.</li>
+ *   <li><b>{@code void op(Connection conn, ...)} package methods</b> — execute SQL only;
+ *       the caller ({@link SqliteConfigStore} or {@link SqliteTransactions}) owns
+ *       commit/rollback. These methods must not call {@code setAutoCommit}, {@code commit},
+ *       or {@code rollback}.</li>
+ * </ul>
  *
  * @param <T> the domain record type (e.g., ModelConfigRecord)
  */

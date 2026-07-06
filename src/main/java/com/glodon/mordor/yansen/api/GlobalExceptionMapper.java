@@ -30,8 +30,10 @@ public final class GlobalExceptionMapper {
     public static void register(RoutesConfig routes) {
         routes.exception(UpstreamTimeoutException.class, GlobalExceptionMapper::handleUpstreamTimeout);
         routes.exception(RouteNotFoundException.class, GlobalExceptionMapper::handleNotFound);
+        routes.exception(ConfigNotFoundException.class, GlobalExceptionMapper::handleConfigNotFound);
         routes.exception(AgentNotFoundException.class, GlobalExceptionMapper::handleBadRequestAgent);
         routes.exception(ConfigReferenceException.class, GlobalExceptionMapper::handleConflict);
+        routes.exception(ConfigConflictException.class, GlobalExceptionMapper::handleConfigConflict);
         routes.exception(RouteConflictException.class, GlobalExceptionMapper::handleConflictRoute);
         routes.exception(IllegalArgumentException.class, GlobalExceptionMapper::handleBadRequest);
         routes.exception(Exception.class, GlobalExceptionMapper::handleInternal);
@@ -53,11 +55,27 @@ public final class GlobalExceptionMapper {
     }
 
     private static void handleNotFound(RouteNotFoundException e, Context ctx) {
+        respondNotFound(ctx, e);
+    }
+
+    private static void handleConfigNotFound(ConfigNotFoundException e, Context ctx) {
+        respondNotFound(ctx, e);
+    }
+
+    private static void respondNotFound(Context ctx, RuntimeException e) {
         log.warn("Not found on {} {}: {}", ctx.method(), ctx.path(), e.getMessage());
         ctx.status(404).json(new ErrorResponse(CODE_NOT_FOUND, safeMessage(e)));
     }
 
     private static void handleConflict(ConfigReferenceException e, Context ctx) {
+        respondConflict(ctx, e);
+    }
+
+    private static void handleConfigConflict(ConfigConflictException e, Context ctx) {
+        respondConflict(ctx, e);
+    }
+
+    private static void respondConflict(Context ctx, RuntimeException e) {
         log.warn("Conflict on {} {}: {}", ctx.method(), ctx.path(), e.getMessage());
         ctx.status(409).json(new ErrorResponse(CODE_CONFLICT, safeMessage(e)));
     }

@@ -2,54 +2,111 @@
 
 ## Architecture
 
-Single-module Maven app (Java 21) built on **agentscope-harness** (v2.0.0-RC4). Runs as a **Javalin HTTP server** (not a CLI agent).
+Single-module Maven app (Java 21) on **agentscope-harness** (v2.0.0-RC4). Runs as a **Javalin HTTP server** (not a CLI agent).
 
-- `POST /api/chat` — synchronous chat (JSON body → JSON response)
-- `GET /api/chat/stream` — SSE streaming chat (query params → event stream)
+**Config split:** `yansen.yml` holds infrastructure only (server ports/timeouts, database connection). All business config (models, agents, prompts, tools, skills, MCP) lives in **SQLite** (`ConfigStore`), initialized from `db/sqlite/schema.sql` + `db/init-data.sql`.
+
+**Request flow:**
 
 ```
-src/main/java/com/glodon/mordor/yansen/
-  AgentMain.java              – Javalin server entry point, route definitions
-  config/YansenConfig.java    – YAML config with ${ENV_VAR:default} placeholder resolution
-  llm/MinimaxModel.java       – factory for MiniMax-M3 model (OpenAI-compatible via agentscope)
-  model/ChatRequest.java      – chat request record DTO
-  service/YansenAgentService.java – HarnessAgent lifecycle, chat/stream operations
+HTTP request
+  → RouteRegistry (path → agentId)
+  → AgentRegistry (lazy-load + in-memory cache)
+  → AgentFactory (read SQLite records → build HarnessAgent)
+  → YansenAgentImpl.chat() / chatStream()
+```
+
+**Startup (`AgentMain`):** load YAML → open ConfigStore → `AgentContext.bootstrap()` (SPI: ModelRegistry, ToolRegistry, SkillRegistry, McpRegistry) → register dynamic agent routes from DB → wire `ApiModule`.
+
+### HTTP surface
+
+| Category | Endpoints |
+|----------|-----------|
+| Health | `GET /api/health` — liveness + cached agents + route snapshot |
+| Chat (per agent) | `POST {route}` — sync JSON; `GET {route}/stream` — SSE |
+| Config CRUD | `POST/GET/PUT/DELETE /api/config/{model\|agent\|prompt\|tool\|skill\|mcp}` (+ `GET .../{id}`) |
+
+Default seed registers two agents: `default` at `/api/chat` and `nl2sql` at `/api/nl2sql` (each with sync + SSE). Additional agents are added via DB or `/api/config/agent` (registers routes at runtime).
+
+**SSE:** `SseSession` handles heartbeat (`keepAliveIntervalSeconds`), event idle timeout, synchronized writes. Jetty connector idle timeout is set from `sseIdleTimeoutSeconds`.
+
+**Agent cache:** `AgentRegistry` lazy-loads on first request; instances stay in memory until `invalidate()` (agent config update/delete via API).
+
+### Package map
+
+```
+com.glodon.mordor.yansen/
+  AgentMain.java, AgentContext.java          – entry + wiring
+  agent/                                     – YansenAgent, AgentFactory, YansenAgentImpl
+  api/                                       – handlers, ConfigController, SseSession, ApiModule
+  config/                                    – YansenConfig, YansenSettings (server + database only)
+  config/store/                              – ConfigStore, records, ConfigValueResolver
+  config/store/sqlite/                       – SqliteConfigStore, DAOs, HikariCP
+  registry/                                  – RouteRegistry, AgentRegistry
+  llm/, tool/, skill/, mcp/                  – SPI registries (discover / fromSkillRecords / fromMcpRecords)
 src/main/resources/
-  yansen.yml                  – default config (env var placeholders)
-  system-prompt.md            – default system prompt (classpath fallback)
-agentscope/                   – agent workspace runtime data (not source)
+  yansen.yml                                 – server + database placeholders
+  db/sqlite/schema.sql, db/init-data.sql     – config DB bootstrap
+  system-prompt.md, prompts/, skills/         – default + NL2SQL classpath prompts, bundled skills
 ```
+
+Detailed design notes: `openspec/changes/nl2sql-agent/`.
 
 ## Build & Run
 
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `mvn compile` | Compile |
-| `mvn package` | Build JAR (runs tests) |
+| `mvn test` | Run tests (~130, JUnit 5) |
+| `mvn package` | Build JAR + run tests |
+| `mvn exec:java -Dexec.mainClass="com.glodon.mordor.yansen.AgentMain"` | Run server locally |
 
-To run: `mvn exec:java -Dexec.mainClass="com.glodon.mordor.yansen.AgentMain"` (requires `exec-maven-plugin` in pom.xml — not currently configured).
+Requires `MINIMAX_API_KEY` (or model apiKey in DB) for LLM calls.
 
 ## Configuration
 
-Config loaded from classpath `yansen.yml`, overridden by external file via `YANSEN_CONFIG_FILE` env var. Values support `${ENV_VAR:default}` placeholders.
+**YAML** (`yansen.yml`, override via `YANSEN_CONFIG_FILE`): `${ENV_VAR:default}` resolved at load time.
+
+**SQLite** (`YANSEN_SQLITE_PATH`, default `store/yansen.db`): business config. No database-level `FOREIGN KEY` constraints — references are validated in application code (`ConfigController.validateAgentReferences` on agent CRUD, `ConfigReferenceException` on delete when still referenced). String values including `${ENV:default}` are stored **literally** in the database and returned as-is by CRUD APIs. Env substitution runs only when values are **consumed at runtime** via `ConfigValueResolver.resolveStored()`:
+
+| Area | Resolved fields | When |
+|------|-----------------|------|
+| Model | `provider`, `modelName`, `baseUrl`, `apiKey` | `ModelConfigRecord.toModelSettings()` (agent build) |
+| Agent | `modelId`, `workspace`, `route`, `agentType`; `toolIds` / `skillIds` / `mcpIds` as lookup keys | `AgentFactory`, `AgentRouteRegistrar` |
+| Prompt | `sourceRef` (path); file/classpath content may contain placeholders too | `SqliteConfigStore.resolvePromptContent()` + agent build |
+| Skill | `sourceRef` | `SkillRegistry.fromSkillRecords()` (bootstrap) and `toResolveId()` (per agent) |
+| MCP | `config` (JSON string, including embedded placeholders) | `McpRegistry.fromMcpRecords()` (bootstrap) |
+
+**Not resolved:** primary-key columns as stored (`agentId`, `modelId`, `toolId`, …) and CRUD list/get responses — only runtime lookups and wiring expand placeholders. Resolution is **single-pass** (if an env var value itself contains `${...}`, it is not expanded again).
 
 | Env var | Purpose | Default |
-|---|---|---|
-| `MINIMAX_API_KEY` | MiniMax API key | *(empty — required)* |
-| `YANSEN_PORT` | HTTP server port | `8080` |
-| `YANSEN_WORKSPACE` | Agent workspace path | *(empty)* |
-| `YANSEN_SYSTEM_PROMPT` | External system prompt file path | *(classpath fallback)* |
-| `YANSEN_CONFIG_FILE` | External YAML config override | *(none)* |
+|---------|---------|---------|
+| `MINIMAX_API_KEY` | Default model API key (via DB placeholder) | *(empty)* |
+| `YANSEN_PORT` | HTTP port | `8080` |
+| `YANSEN_WORKSPACE` | Agent workspace root (DB: `${YANSEN_WORKSPACE:./agentscope}`) | `./agentscope` if unset |
+| `YANSEN_SQLITE_PATH` | Config database file | `store/yansen.db` |
+| `YANSEN_CONFIG_FILE` | External YAML override | *(none)* |
+| `YANSEN_LOG_LEVEL` | SLF4J level for `com.glodon.mordor.yansen` | `info` |
+| `YANSEN_KEEPALIVE_INTERVAL` | SSE heartbeat interval (s) | `10` |
+| `YANSEN_SSE_IDLE_TIMEOUT` | Jetty connector idle timeout (s) | `300` |
+| `YANSEN_SSE_EVENT_TIMEOUT` | SSE stream event gap timeout (s) | `120` |
+| `YANSEN_CHAT_TIMEOUT` | Sync chat block timeout (s) | `300` |
+
+**Skills:** built-in → `skill_config.sourceType=classpath`, files under `src/main/resources/skills/`. Custom → `sourceType=workspace`, files under `{workspace}/{sourceRef}/` (typically `$YANSEN_WORKSPACE/skills/`). Skill text is never stored in SQLite.
+
+**Workspace:** per-agent field in `agent_config.workspace`. Set `YANSEN_WORKSPACE` to an **absolute path** in production to avoid dependence on process cwd.
+
+MySQL ConfigStore is **planned** (`database.mysql` in yansen.yml + `db/mysql/schema.sql`) but **not implemented**; `database.type=mysql` fails at startup. Use SQLite (default).
 
 ## Coding Style
 
 - Java 21, 4-space indent, no tabs.
-- Packages: `com.glodon.mordor.yansen.*` by concern (`config`, `llm`, `model`, `service`).
-- Javadoc `@author` / `@date` / `@description` headers on class-level docs.
+- Packages by concern: `agent`, `api`, `config`, `config.store`, `registry`, `llm`, `tool`, `skill`, `mcp`.
+- Class-level Javadoc with `@author` / `@date` / `@description`.
 
 ## Testing
 
-No test framework is currently configured. JUnit 5 (`junit-jupiter`) must be added to `pom.xml` before writing tests. Test class naming: `<Class>Test.java`.
+JUnit 5 (`junit-jupiter`) + `javalin-testtools` for HTTP integration tests. Naming: `<Class>Test.java`. Run `mvn test`. New features should include tests where behavior is non-trivial.
 
 ## Commit Conventions
 

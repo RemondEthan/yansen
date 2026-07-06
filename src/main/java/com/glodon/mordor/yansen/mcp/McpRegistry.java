@@ -2,6 +2,7 @@ package com.glodon.mordor.yansen.mcp;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.glodon.mordor.yansen.config.store.ConfigValueResolver;
 import com.glodon.mordor.yansen.config.store.McpConfigRecord;
 import io.agentscope.harness.agent.tools.McpServerConfig;
 
@@ -75,7 +76,7 @@ public final class McpRegistry {
     }
 
     private static McpServerConfig deserializeConfig(McpConfigRecord record) {
-        String json = record.config();
+        String json = ConfigValueResolver.resolveStored(record.config());
         if (json == null || json.isBlank()) {
             return new McpServerConfig();
         }

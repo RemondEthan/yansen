@@ -43,13 +43,7 @@ public class SqliteAgentDao extends SqliteDao<AgentConfigRecord> implements Agen
     
     @Override
     public AgentConfigRecord create(AgentConfigRecord record) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            create(conn, record);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed: " + AgentDao.INSERT, e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "create agent row", conn -> create(conn, record));
         return new AgentConfigRecord(
             record.agentId(), record.name(), record.agentType(), record.route(),
             record.modelId(), record.systemPromptId(), record.workspace(),
@@ -57,6 +51,7 @@ public class SqliteAgentDao extends SqliteDao<AgentConfigRecord> implements Agen
             now(), now());
     }
 
+    /** Executes INSERT on an caller-managed connection; does not commit. */
     void create(Connection conn, AgentConfigRecord record) {
         String now = now();
         execute(conn, AgentDao.INSERT,
@@ -66,13 +61,7 @@ public class SqliteAgentDao extends SqliteDao<AgentConfigRecord> implements Agen
     
     @Override
     public AgentConfigRecord update(AgentConfigRecord record) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            update(conn, record);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed: " + AgentDao.UPDATE, e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "update agent row", conn -> update(conn, record));
         return new AgentConfigRecord(
             record.agentId(), record.name(), record.agentType(), record.route(),
             record.modelId(), record.systemPromptId(), record.workspace(),
@@ -80,6 +69,7 @@ public class SqliteAgentDao extends SqliteDao<AgentConfigRecord> implements Agen
             record.createdAt(), now());
     }
 
+    /** Executes UPDATE on a caller-managed connection; does not commit. */
     void update(Connection conn, AgentConfigRecord record) {
         String now = now();
         execute(conn, AgentDao.UPDATE,
@@ -89,15 +79,10 @@ public class SqliteAgentDao extends SqliteDao<AgentConfigRecord> implements Agen
 
     @Override
     public void delete(String agentId) {
-        try (Connection conn = dataSource.getConnection()) {
-            conn.setAutoCommit(false);
-            delete(conn, agentId);
-            conn.commit();
-        } catch (SQLException e) {
-            throw new RuntimeException("Execute failed: " + AgentDao.DELETE, e);
-        }
+        SqliteTransactions.inTransaction(dataSource, "delete agent row", conn -> delete(conn, agentId));
     }
 
+    /** Executes DELETE on a caller-managed connection; does not commit. */
     void delete(Connection conn, String agentId) {
         execute(conn, AgentDao.DELETE, agentId);
     }

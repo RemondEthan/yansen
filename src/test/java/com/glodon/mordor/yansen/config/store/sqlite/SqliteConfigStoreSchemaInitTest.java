@@ -55,6 +55,7 @@ class SqliteConfigStoreSchemaInitTest {
         assertFalse(store.listModels().isEmpty());
         assertFalse(store.listAgents().isEmpty());
         assertTrue(store.getAgent("default").isPresent());
+        assertTrue(store.getAgent("nl2sql").isPresent());
         assertTrue(store.getModel("default").isPresent());
 
         var model = store.getModel("default").orElseThrow();
@@ -62,6 +63,12 @@ class SqliteConfigStoreSchemaInitTest {
 
         var agent = store.getAgent("default").orElseThrow();
         assertEquals("${YANSEN_WORKSPACE:./agentscope}", agent.workspace());
+        assertEquals("/api/chat", agent.route());
+
+        var nl2sql = store.getAgent("nl2sql").orElseThrow();
+        assertEquals("/api/nl2sql", nl2sql.route());
+        assertEquals("nl2sql", nl2sql.agentType());
+        assertEquals("prompts/nl2sql-system-prompt.md", store.getPrompt(nl2sql.systemPromptId()).orElseThrow().sourceRef());
     }
 
     private boolean tableExists(String tableName) throws SQLException {

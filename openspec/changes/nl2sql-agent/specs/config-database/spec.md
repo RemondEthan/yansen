@@ -69,20 +69,24 @@
 - **WHEN** 系统启动，db文件存在且表已有数据
 - **THEN** 跳过初始化，直接使用数据库中的配置
 
-### Requirement: init-data.sql占位符预渲染
-系统SHALL在执行init-data.sql前，对其中的`${ENV_VAR:default}`占位符进行预渲染。占位符写在SQL字符串字面量内（保持SQL语法合法），预渲染时逐行扫描并调用PlaceholderResolver.resolve()替换为环境变量值。预渲染仅在init-data.sql执行时生效，后续CRUD API写入的值不做占位符解析。
+### Requirement: init-data.sql占位符存储
+系统SHALL将init-data.sql中的`${ENV_VAR:default}`占位符以字面量形式写入SQLite，不做环境变量预渲染。占位符写在SQL字符串字面量内（保持SQL语法合法）。env变量替换仅在agent实例化时通过ConfigValueResolver.resolveStored()执行。CRUD API写入的值同样不做占位符解析。
 
-#### Scenario: 环境变量存在时替换
-- **WHEN** init-data.sql包含`'${MINIMAX_API_KEY:}'`，环境变量MINIMAX_API_KEY=sk-xxx
-- **THEN** 预渲染后该值变为`'sk-xxx'`，写入SQLite的model_config表
+#### Scenario: init-data.sql占位符字面量入库
+- **WHEN** init-data.sql包含`'${MINIMAX_API_KEY:}'`
+- **THEN** SQLite model_config.apiKey存储字面量`${MINIMAX_API_KEY:}`，不做环境变量替换
+
+#### Scenario: 实例化agent时解析占位符
+- **WHEN** agent引用model_config.apiKey='${MINIMAX_API_KEY:}'，环境变量MINIMAX_API_KEY=sk-xxx
+- **THEN** ModelConfigRecord.toModelSettings()解析为sk-xxx供ModelRegistry.create()使用
 
 #### Scenario: 环境变量不存在时使用默认值
-- **WHEN** init-data.sql包含`'${MINIMAX_API_KEY:}'`，环境变量MINIMAX_API_KEY未设置
-- **THEN** 预渲染后该值变为`''`（空串，冒号后为空即默认值为空串）
+- **WHEN** apiKey='${MINIMAX_API_KEY:}'，环境变量MINIMAX_API_KEY未设置
+- **THEN** 实例化时解析为空串（冒号后为空即默认值为空串）
 
 #### Scenario: 无占位符的值不受影响
 - **WHEN** init-data.sql包含`'openai-compatible'`（不含${...}）
-- **THEN** 预渲染后值不变，仍为`'openai-compatible'`
+- **THEN** 值不变，仍为`'openai-compatible'`
 
 #### Scenario: CRUD API写入的值不做占位符解析
 - **WHEN** 通过PUT /api/config/model/{id}写入apiKey='${SOME_KEY}'

@@ -19,6 +19,17 @@ class ModelConfigRecordRuntimeTest {
     }
 
     @Test
+    void toModelSettings_resolvesModelNameAndProviderPlaceholders() {
+        ModelConfigRecord stored = new ModelConfigRecord(
+                "default", "${PROVIDER:openai-compatible}", "${MODEL_NAME:MiniMax-M3}",
+                "https://api.example.com/v1", "sk-literal", null, null, null, null, null, null);
+
+        var settings = stored.toModelSettings();
+        assertEquals("openai-compatible", settings.provider());
+        assertEquals("MiniMax-M3", settings.modelName());
+    }
+
+    @Test
     void toModelSettings_keepsLiteralApiKey() {
         ModelConfigRecord stored = new ModelConfigRecord(
                 "m1", "openai-compatible", "gpt-4", "https://api.example.com/v1",

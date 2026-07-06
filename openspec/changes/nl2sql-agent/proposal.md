@@ -8,7 +8,7 @@
 
 - 新增SQLite配置存储：model、agent、system_prompt、tool、skill、mcp配置全部从SQLite读取，替代yansen.yml中的对应段
 - yansen.yml仅保留基础服务配置（server），移除models、agents、skills、mcp段
-- SQLite通过classpath SQL脚本初始化（schema.sql建表 + init-data.sql默认数据），init-data.sql支持${ENV_VAR:default}占位符预渲染（写在SQL字符串字面量内，保持SQL语法合法），不存在YAML迁移逻辑
+- SQLite通过classpath SQL脚本初始化（schema.sql建表 + init-data.sql默认数据），init-data.sql中占位符以字面量入库，实例化时解析，不存在YAML迁移逻辑
 - 新增RouteRegistry：agent_config.route字段驱动，启动时动态注册Javalin端点，URL路径即路由，消除agentId硬编码
 - 新增AgentRegistry，请求到来时lazy加载agent实例（按agentId从SQLite读配置→实例化HarnessAgent→缓存），加载后常驻内存，不做淘汰
 - Agent数量由SQLite配置决定，固定不变；只有配置过的agent才可以被加载
@@ -19,7 +19,7 @@
 ## Capabilities
 
 ### New Capabilities
-- `config-database`: 配置数据库存储——model、agent、system_prompt、tool、skill、mcp配置全部存储在SQLite中，提供CRUD API，SQL脚本初始化（init-data.sql支持占位符预渲染）
+- `config-database`: 配置数据库存储——model、agent、system_prompt、tool、skill、mcp配置全部存储在SQLite中，提供CRUD API，SQL脚本初始化（占位符字面量入库，实例化时解析）
 - `agent-registry`: Agent注册中心——lazy加载+缓存agent实例，加载后常驻内存不淘汰；route-based路由；agent类型由配置驱动
 - `nl2sql-agent`: NL2SQL Agent——通过route="/api/nl2sql"的agent配置接收userPrompt，路由到配置了NL2SQL专用system prompt的agent实例
 

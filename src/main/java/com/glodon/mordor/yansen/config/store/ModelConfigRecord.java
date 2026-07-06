@@ -23,13 +23,13 @@ public record ModelConfigRecord(
 
     /**
      * Convert to the SPI contract type for agent runtime.
-     * Resolves {@code ${ENV:default}} placeholders in {@code baseUrl} and {@code apiKey}
-     * using current environment variables. The database record itself is not modified.
+     * Resolves {@code ${ENV:default}} placeholders in all string settings using current
+     * environment variables. The database record itself is not modified.
      */
     public ModelSettings toModelSettings() {
         return new ModelSettings(
-                provider,
-                modelName,
+                ConfigValueResolver.resolveStored(provider),
+                ConfigValueResolver.resolveStored(modelName),
                 ConfigValueResolver.resolveStored(baseUrl),
                 ConfigValueResolver.resolveStored(apiKey),
                 null, // timeoutSeconds deprecated

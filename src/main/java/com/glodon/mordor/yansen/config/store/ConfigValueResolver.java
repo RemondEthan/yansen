@@ -6,8 +6,11 @@ import com.glodon.mordor.yansen.config.PlaceholderResolver;
  * @author: Remond
  * @date: 2026-07-03
  * @description: Resolves {@code ${ENV_VAR:default}} placeholders in values read from the config database.
- * Used only when building a runtime agent instance — stored values are never rewritten on read.
- * Plain literals (no {@code ${...}}) are returned unchanged.
+ * Applied to every string field that affects runtime behaviour (model settings, agent workspace,
+ * prompt paths/content, skill paths, MCP JSON, HTTP routes, association ids, etc.).
+ * <p>Resolution is single-pass: if an env var value itself contains {@code ${...}}, it is not
+ * expanded again. Primary keys written to SQLite and CRUD API responses are never rewritten —
+ * only values consumed when building agents, routes, or registries are resolved.</p>
  */
 public final class ConfigValueResolver {
 
