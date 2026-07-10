@@ -24,13 +24,14 @@ HTTP request
 |----------|-----------|
 | Health | `GET /api/health` — liveness + cached agents + route snapshot |
 | Chat (per agent) | `POST {route}` — sync JSON; `GET {route}/stream` — SSE |
-| Config CRUD | `POST/GET/PUT/DELETE /api/config/{model\|agent\|prompt\|tool\|skill\|mcp}` (+ `GET .../{id}`) |
+| Config CRUD | `POST/GET/PUT/DELETE /api/config/{model\|prompt\|tool\|skill\|mcp}` (+ `GET .../{id}`) |
+| Agent config (read-only at runtime) | `GET /api/config/agent` (+ `GET .../{id}`) — see lifecycle note below |
 
-Default seed registers two agents: `default` at `/api/chat` and `nl2sql` at `/api/nl2sql` (each with sync + SSE). Additional agents are added via DB or `/api/config/agent` (registers routes at runtime).
+Default seed registers two agents: `default` at `/api/chat` and `nl2sql` at `/api/nl2sql` (each with sync + SSE). **Agent set is closed at runtime**: `POST`/`PUT`/`DELETE` on `/api/config/agent[/{id}]` are not part of the supported surface, and direct `agent_config` writes are also unsupported. Adding, modifying, or deleting an agent requires editing `db/init-data.sql` (or the equivalent seed path) and restarting the service. The **only runtime-mutable resource tied to an agent is the model** — `/api/config/model` controls provider, modelName, baseUrl, apiKey, and timeouts/retries; the agent picks those up via lazy load on the next request.
 
 **SSE:** `SseSession` handles heartbeat (`keepAliveIntervalSeconds`), event idle timeout, synchronized writes. Jetty connector idle timeout is set from `sseIdleTimeoutSeconds`.
 
-**Agent cache:** `AgentRegistry` lazy-loads on first request; instances stay in memory until `invalidate()` (agent config update/delete via API).
+**Agent cache:** `AgentRegistry` lazy-loads on first request; instances stay in memory until process shutdown or an internal race-resolution path (see agent lifecycle note above).
 
 ### Package map
 

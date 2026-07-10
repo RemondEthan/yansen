@@ -29,12 +29,12 @@ public final class YansenConfig {
     private YansenConfig() {}
 
     public static YansenSettings load() {
-        YansenSettings defaults = loadFromClasspath();
+        YansenSettings config = loadFromClasspath();
         String externalPath = System.getenv(ENV_CONFIG_FILE);
         if (externalPath != null && !externalPath.isBlank()) {
-            return defaults.mergedWith(loadFromFile(Path.of(externalPath)));
+            return config.mergedWith(loadFromFile(Path.of(externalPath)));
         }
-        return defaults;
+        return config;
     }
 
     static YansenSettings loadFromClasspath() {
